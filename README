@@ -1,0 +1,166 @@
+RELEVANT SOURCE FILES: 
+
+flexsched.c         	-- simulator code -- compile against gsl and libm
+genprob.py              -- generates a single problem using test & 
+                           reject and a scaling factor for slack
+genprobset.sh           -- invokes genprob.py many times to create 
+                           a whole problem set
+generate_dataset.sh	-- invokes genprobset.sh (convenience wrapper)
+
+===========================================================================
+
+REQUIREMENTS:
+
+galib should be installed (http://lancet.mit.edu/ga/)
+GALIB_PATH should be set in the Makefile
+
+===========================================================================
+
+USAGE:
+
+./flexsched <quote list of scheduling algorithms> [<input file> [<output file>]]
+
+  Example:   ./flexsched "VP_BFDMAX GREEDY_S2_P3" ./input ./input.result
+
+===========================================================================
+
+INPUT FORMAT: 
+
+<num rigid>
+<num fluid>
+<num servers>
+<sla> <rigid> ... <rigid> <fluid> ... <fluid>
+<sla> <rigid> ... <rigid> <fluid> ... <fluid>
+...
+
+===========================================================================
+
+OUTPUT FORMAT: 
+
+One or more lines of the form: a|b|c|d|e|f|g|h
+
+a: algorithm name (string)
+b: achieved minimum yield (fraction)
+c: non-optimized average yield (fraction)
+d: optimized average yield (fraction)
+e: non-optimized utilization (fraction)
+f: optimized utilization (fraction)
+g: computation time needed to achieve minimum yield (in sec)
+h: misc. output string with algorithm-specific information
+	(see comments at the beginning of flexsched.c)
+ 
+===========================================================================
+
+INPUT FORMAT:
+
+A file with the following lines:
+
+<# of rigid needs>
+<# fluid needs>
+<# of servers>
+<# of services>
+<sla> <rigid need #1> ... <rigid need #last> <fluid need #1> ... <fluid need #last>
+<sla> <rigid need #1> ... <rigid need #last> <fluid need #1> ... <fluid need #last>
+. . .
+
+Example:
+  3 rigid needs, 3 fluid needs, 4 servers, 5 services
+  the first service has an SLA of 0.5, the others 0.0
+
+3
+3
+4
+5
+0.5 0.090 0.336 0.680 0.701 0.379 0.879 
+0 0.497 0.396 0.236 0.446 0.415 0.374 
+0 0.422 0.191 0.257 0.535 0.198 0.690 
+0 0.678 0.617 0.422 0.781 0.467 0.351 
+0 0.274 0.419 0.650 0.967 0.793 0.112 
+
+
+===========================================================================
+
+SCHEDULING ALGORITHMS:
+
+* GREEDY_X_Y:
+   X: pre-sorting of the services, always decreasing
+   Y: selection of the servers, once all infeasible serers have been removed
+
+  X = S1 | S2 | S3 | S4 | S5 | S6 | S7
+  Y = P1 | P2 | P3 | P4 | P5 | P6 | P7 | P8
+
+  * S1: No pre-sorting
+  * S2: by max of fluid needs
+  * S3: by sum of fluid needs
+  * S4: by max of rigid need and constrained fluid needs
+  * S5: by sum of rigid need and constrained fluid needs
+  * S6: by max of all needs
+  * S7: by sum of all needs
+
+  * P1: pick server least loaded in max fluid need of the job
+  * P2: pick server least loaded in sum fluid need
+  * P3: best fit in terms of max rigid need or constrained fluid need of job
+  * P4: best fit in terms of sum rigid need and constrained fluid
+  * P5: worst fit in terms of max rigid need or constrained fluid need of job
+  * P6: worst fit in terms of sum rigid need and constrained fluid
+  * P7: first fit (random fit)
+
+* MILP
+	Compute the optimal solution
+
+* LPBOUND 
+	Compute the rational bound on the optimal solution
+
+* RRND
+	Solve the rational LP and do a probabilistic round-off of
+        rational values into integer values. 
+
+* RRNZ 
+	Solve the rational LP and do a probabilistic round-off of
+        rational values into integer values. But first, set all 
+        zero-valued variables to some epsilon (0.001)
+
+* SLOWDIVING 
+	iteratively solve the rational LP, each time fixing a single
+        integer variable to 0 or 1 (one of the e_ij)
+
+* FASTDIVING 
+	iteratively solve the rational LP, each time fixing #servers
+        integer variables to 0 and 1 (all e_i*)
+
+
+* VP_*: Algorithms that do a binary search on the minimum yield and 
+        use various Vector Packing algorithms
+
+  * VP_PPMAXRATIO VP_PPSUM VP_PPMAX 
+	The PermutationPack algorithm from Leinberger et al., with 
+        four different ways to sort lists:
+	    - MAX DIFFERENCE
+	    - MAX RATIO
+	    - SUM
+	    - MAX
+
+
+  * VP_CPMAXDIFF VP_CPMAXRATIO VP_CPSUM VP_CPMAX 
+	The ChoosePack algorithm from Leinberger et al., with 
+        four different ways to sort lists:
+	    - MAX DIFFERENCE
+	    - MAX RATIO
+	    - SUM
+	    - MAX
+
+  * VP_BFDSUM VP_BFDMAX VP_BFDLEX 
+        Best Fit Decreasing, with three different pre-sorting of vectors:
+		- SUM of coordinates
+		- MAX of coordinates
+		- LEXicographical order
+
+  * VP_FFDSUM VP_FFDMAX VP_FFDLEX 
+        First Fit Decreasing, with three different pre-sorting of vectors:
+		- SUM of coordinates
+		- MAX of coordinates
+		- LEXicographical order
+
+  * VP_CHERUKI
+	The vector packing algorithm by Cheruki et al.	
+
