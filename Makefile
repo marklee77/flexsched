@@ -7,7 +7,7 @@ PROG2 = flexsched2
 GLPK_INSTALLPATH=$(HOME)/progs/base
 LIBGA_PATH=$(HOME)/progs/base
 
-CFLAGS = -O3
+CFLAGS = -g
 
 default: $(PROG1) 
 

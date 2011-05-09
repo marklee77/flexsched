@@ -1,4 +1,3 @@
-#include <glpk.h>
 #include "flexsched.h"
 
 /* Global variable that keeps track of the current problem instance */
@@ -28,89 +27,84 @@ int VP_scheduler(char*,char*,char*);
 int GA_scheduler(char*,char*,char*);
 
 struct scheduler_t implemented_schedulers[] = {
-{"GREEDY_S1_P1", GREEDY_scheduler,     "S1", "P1", NULL},
-{"GREEDY_S1_P2", GREEDY_scheduler,     "S1", "P2", NULL},
-{"GREEDY_S1_P3", GREEDY_scheduler,     "S1", "P3", NULL},
-{"GREEDY_S1_P4", GREEDY_scheduler,     "S1", "P4", NULL},
-{"GREEDY_S1_P5", GREEDY_scheduler,     "S1", "P5", NULL},
-{"GREEDY_S1_P6", GREEDY_scheduler,     "S1", "P6", NULL},
-{"GREEDY_S1_P7", GREEDY_scheduler,     "S1", "P7", NULL},
-{"GREEDY_S2_P1", GREEDY_scheduler,     "S2", "P1", NULL},
-{"GREEDY_S2_P2", GREEDY_scheduler,     "S2", "P2", NULL},
-{"GREEDY_S2_P3", GREEDY_scheduler,     "S2", "P3", NULL},
-{"GREEDY_S2_P4", GREEDY_scheduler,     "S2", "P4", NULL},
-{"GREEDY_S2_P5", GREEDY_scheduler,     "S2", "P5", NULL},
-{"GREEDY_S2_P6", GREEDY_scheduler,     "S2", "P6", NULL},
-{"GREEDY_S2_P7", GREEDY_scheduler,     "S2", "P7", NULL},
-{"GREEDY_S3_P1", GREEDY_scheduler,     "S3", "P1", NULL},
-{"GREEDY_S3_P2", GREEDY_scheduler,     "S3", "P2", NULL},
-{"GREEDY_S3_P3", GREEDY_scheduler,     "S3", "P3", NULL},
-{"GREEDY_S3_P4", GREEDY_scheduler,     "S3", "P4", NULL},
-{"GREEDY_S3_P5", GREEDY_scheduler,     "S3", "P5", NULL},
-{"GREEDY_S3_P6", GREEDY_scheduler,     "S3", "P6", NULL},
-{"GREEDY_S3_P7", GREEDY_scheduler,     "S3", "P7", NULL},
-{"GREEDY_S4_P1", GREEDY_scheduler,     "S4", "P1", NULL},
-{"GREEDY_S4_P2", GREEDY_scheduler,     "S4", "P2", NULL},
-{"GREEDY_S4_P3", GREEDY_scheduler,     "S4", "P3", NULL},
-{"GREEDY_S4_P4", GREEDY_scheduler,     "S4", "P4", NULL},
-{"GREEDY_S4_P5", GREEDY_scheduler,     "S4", "P5", NULL},
-{"GREEDY_S4_P6", GREEDY_scheduler,     "S4", "P6", NULL},
-{"GREEDY_S4_P7", GREEDY_scheduler,     "S4", "P7", NULL},
-{"GREEDY_S5_P1", GREEDY_scheduler,     "S5", "P1", NULL},
-{"GREEDY_S5_P2", GREEDY_scheduler,     "S5", "P2", NULL},
-{"GREEDY_S5_P3", GREEDY_scheduler,     "S5", "P3", NULL},
-{"GREEDY_S5_P4", GREEDY_scheduler,     "S5", "P4", NULL},
-{"GREEDY_S5_P5", GREEDY_scheduler,     "S5", "P5", NULL},
-{"GREEDY_S5_P6", GREEDY_scheduler,     "S5", "P6", NULL},
-{"GREEDY_S5_P7", GREEDY_scheduler,     "S5", "P7", NULL},
-{"GREEDY_S6_P1", GREEDY_scheduler,     "S6", "P1", NULL},
-{"GREEDY_S6_P2", GREEDY_scheduler,     "S6", "P2", NULL},
-{"GREEDY_S6_P3", GREEDY_scheduler,     "S6", "P3", NULL},
-{"GREEDY_S6_P4", GREEDY_scheduler,     "S6", "P4", NULL},
-{"GREEDY_S6_P5", GREEDY_scheduler,     "S6", "P5", NULL},
-{"GREEDY_S6_P6", GREEDY_scheduler,     "S6", "P6", NULL},
-{"GREEDY_S6_P7", GREEDY_scheduler,     "S6", "P7", NULL},
-{"GREEDY_S7_P1", GREEDY_scheduler,     "S7", "P1", NULL},
-{"GREEDY_S7_P2", GREEDY_scheduler,     "S7", "P2", NULL},
-{"GREEDY_S7_P3", GREEDY_scheduler,     "S7", "P3", NULL},
-{"GREEDY_S7_P4", GREEDY_scheduler,     "S7", "P4", NULL},
-{"GREEDY_S7_P5", GREEDY_scheduler,     "S7", "P5", NULL},
-{"GREEDY_S7_P6", GREEDY_scheduler,     "S7", "P6", NULL},
-{"GREEDY_S7_P7", GREEDY_scheduler,     "S7", "P7", NULL},
-{"METAGREEDY",   METAGREEDY_scheduler, NULL, NULL, NULL},
-{"METAGREEDYLIGHT",  METAGREEDYLIGHT_scheduler, NULL, NULL, NULL},
-{"MILP",         MILP_scheduler,       NULL, NULL, NULL},
-{"LPBOUND",      LPBOUND_scheduler,    NULL, NULL, NULL},
-{"RRND",         RRND_scheduler,       NULL, NULL, NULL},
-{"RRNZ",         RRNZ_scheduler,       NULL, NULL, NULL},
-{"SLOWDIVING",   SLOWDIVING_scheduler, NULL, NULL, NULL},
-{"FASTDIVING",   FASTDIVING_scheduler, NULL, NULL, NULL},
-{"VP_PPMAXDIFF", VP_scheduler,         "PPMAXDIFF", NULL, NULL},
-{"VP_PPMAXRATIO",VP_scheduler,         "PPMAXRATIO", NULL, NULL},
-{"VP_PPSUM",     VP_scheduler,         "PPSUM", NULL, NULL},
-{"VP_PPMAX",     VP_scheduler,         "PPMAX", NULL, NULL},
-{"VP_CPMAXDIFF", VP_scheduler,         "CPMAXDIFF", NULL, NULL},
-{"VP_CPMAXRATIO",VP_scheduler,         "CPMAXRATIO", NULL, NULL},
-{"VP_CPSUM",     VP_scheduler,         "CPSUM", NULL, NULL},
-{"VP_CPMAX",     VP_scheduler,         "CPMAX", NULL, NULL},
-{"VP_BFDSUM",    VP_scheduler,         "BFDSUM", NULL, NULL},
-{"VP_BFDMAX",    VP_scheduler,         "BFDMAX", NULL, NULL},
-{"VP_BFDLEX",    VP_scheduler,         "BFDLEX", NULL, NULL},
-{"VP_FFDSUM",    VP_scheduler,         "FFDSUM", NULL, NULL},
-{"VP_FFDMAX",    VP_scheduler,         "FFDMAX", NULL, NULL},
-{"VP_FFDLEX",    VP_scheduler,         "FFDLEX", NULL, NULL},
-{"VP_CHEKURI",   VP_scheduler,         "CHEKURI", NULL, NULL},
-{"GA",           GA_scheduler,         "N", "N", "N"},
-{"GAF",          GA_scheduler,         "F", "N", "N"},
-{"GAFF",         GA_scheduler,         "F", "F", "N"},
-{"GAFFF",        GA_scheduler,         "F", "F", "F"},
-{NULL,           NULL,                 NULL,      NULL, NULL}
+    {"GREEDY_S1_P1", GREEDY_scheduler,     "S1", "P1", NULL},
+    {"GREEDY_S1_P2", GREEDY_scheduler,     "S1", "P2", NULL},
+    {"GREEDY_S1_P3", GREEDY_scheduler,     "S1", "P3", NULL},
+    {"GREEDY_S1_P4", GREEDY_scheduler,     "S1", "P4", NULL},
+    {"GREEDY_S1_P5", GREEDY_scheduler,     "S1", "P5", NULL},
+    {"GREEDY_S1_P6", GREEDY_scheduler,     "S1", "P6", NULL},
+    {"GREEDY_S1_P7", GREEDY_scheduler,     "S1", "P7", NULL},
+    {"GREEDY_S2_P1", GREEDY_scheduler,     "S2", "P1", NULL},
+    {"GREEDY_S2_P2", GREEDY_scheduler,     "S2", "P2", NULL},
+    {"GREEDY_S2_P3", GREEDY_scheduler,     "S2", "P3", NULL},
+    {"GREEDY_S2_P4", GREEDY_scheduler,     "S2", "P4", NULL},
+    {"GREEDY_S2_P5", GREEDY_scheduler,     "S2", "P5", NULL},
+    {"GREEDY_S2_P6", GREEDY_scheduler,     "S2", "P6", NULL},
+    {"GREEDY_S2_P7", GREEDY_scheduler,     "S2", "P7", NULL},
+    {"GREEDY_S3_P1", GREEDY_scheduler,     "S3", "P1", NULL},
+    {"GREEDY_S3_P2", GREEDY_scheduler,     "S3", "P2", NULL},
+    {"GREEDY_S3_P3", GREEDY_scheduler,     "S3", "P3", NULL},
+    {"GREEDY_S3_P4", GREEDY_scheduler,     "S3", "P4", NULL},
+    {"GREEDY_S3_P5", GREEDY_scheduler,     "S3", "P5", NULL},
+    {"GREEDY_S3_P6", GREEDY_scheduler,     "S3", "P6", NULL},
+    {"GREEDY_S3_P7", GREEDY_scheduler,     "S3", "P7", NULL},
+    {"GREEDY_S4_P1", GREEDY_scheduler,     "S4", "P1", NULL},
+    {"GREEDY_S4_P2", GREEDY_scheduler,     "S4", "P2", NULL},
+    {"GREEDY_S4_P3", GREEDY_scheduler,     "S4", "P3", NULL},
+    {"GREEDY_S4_P4", GREEDY_scheduler,     "S4", "P4", NULL},
+    {"GREEDY_S4_P5", GREEDY_scheduler,     "S4", "P5", NULL},
+    {"GREEDY_S4_P6", GREEDY_scheduler,     "S4", "P6", NULL},
+    {"GREEDY_S4_P7", GREEDY_scheduler,     "S4", "P7", NULL},
+    {"GREEDY_S5_P1", GREEDY_scheduler,     "S5", "P1", NULL},
+    {"GREEDY_S5_P2", GREEDY_scheduler,     "S5", "P2", NULL},
+    {"GREEDY_S5_P3", GREEDY_scheduler,     "S5", "P3", NULL},
+    {"GREEDY_S5_P4", GREEDY_scheduler,     "S5", "P4", NULL},
+    {"GREEDY_S5_P5", GREEDY_scheduler,     "S5", "P5", NULL},
+    {"GREEDY_S5_P6", GREEDY_scheduler,     "S5", "P6", NULL},
+    {"GREEDY_S5_P7", GREEDY_scheduler,     "S5", "P7", NULL},
+    {"GREEDY_S6_P1", GREEDY_scheduler,     "S6", "P1", NULL},
+    {"GREEDY_S6_P2", GREEDY_scheduler,     "S6", "P2", NULL},
+    {"GREEDY_S6_P3", GREEDY_scheduler,     "S6", "P3", NULL},
+    {"GREEDY_S6_P4", GREEDY_scheduler,     "S6", "P4", NULL},
+    {"GREEDY_S6_P5", GREEDY_scheduler,     "S6", "P5", NULL},
+    {"GREEDY_S6_P6", GREEDY_scheduler,     "S6", "P6", NULL},
+    {"GREEDY_S6_P7", GREEDY_scheduler,     "S6", "P7", NULL},
+    {"GREEDY_S7_P1", GREEDY_scheduler,     "S7", "P1", NULL},
+    {"GREEDY_S7_P2", GREEDY_scheduler,     "S7", "P2", NULL},
+    {"GREEDY_S7_P3", GREEDY_scheduler,     "S7", "P3", NULL},
+    {"GREEDY_S7_P4", GREEDY_scheduler,     "S7", "P4", NULL},
+    {"GREEDY_S7_P5", GREEDY_scheduler,     "S7", "P5", NULL},
+    {"GREEDY_S7_P6", GREEDY_scheduler,     "S7", "P6", NULL},
+    {"GREEDY_S7_P7", GREEDY_scheduler,     "S7", "P7", NULL},
+    {"METAGREEDY",   METAGREEDY_scheduler, NULL, NULL, NULL},
+    {"METAGREEDYLIGHT",  METAGREEDYLIGHT_scheduler, NULL, NULL, NULL},
+    {"MILP",         MILP_scheduler,       NULL, NULL, NULL},
+    {"LPBOUND",      LPBOUND_scheduler,    NULL, NULL, NULL},
+    {"RRND",         RRND_scheduler,       NULL, NULL, NULL},
+    {"RRNZ",         RRNZ_scheduler,       NULL, NULL, NULL},
+    {"SLOWDIVING",   SLOWDIVING_scheduler, NULL, NULL, NULL},
+    {"FASTDIVING",   FASTDIVING_scheduler, NULL, NULL, NULL},
+    {"VP_PPMAXDIFF", VP_scheduler,         "PPMAXDIFF", NULL, NULL},
+    {"VP_PPMAXRATIO",VP_scheduler,         "PPMAXRATIO", NULL, NULL},
+    {"VP_PPSUM",     VP_scheduler,         "PPSUM", NULL, NULL},
+    {"VP_PPMAX",     VP_scheduler,         "PPMAX", NULL, NULL},
+    {"VP_CPMAXDIFF", VP_scheduler,         "CPMAXDIFF", NULL, NULL},
+    {"VP_CPMAXRATIO",VP_scheduler,         "CPMAXRATIO", NULL, NULL},
+    {"VP_CPSUM",     VP_scheduler,         "CPSUM", NULL, NULL},
+    {"VP_CPMAX",     VP_scheduler,         "CPMAX", NULL, NULL},
+    {"VP_BFDSUM",    VP_scheduler,         "BFDSUM", NULL, NULL},
+    {"VP_BFDMAX",    VP_scheduler,         "BFDMAX", NULL, NULL},
+    {"VP_BFDLEX",    VP_scheduler,         "BFDLEX", NULL, NULL},
+    {"VP_FFDSUM",    VP_scheduler,         "FFDSUM", NULL, NULL},
+    {"VP_FFDMAX",    VP_scheduler,         "FFDMAX", NULL, NULL},
+    {"VP_FFDLEX",    VP_scheduler,         "FFDLEX", NULL, NULL},
+    {"VP_CHEKURI",   VP_scheduler,         "CHEKURI", NULL, NULL},
+    {"GA",           GA_scheduler,         "N", "N", "N"},
+    {"GAF",          GA_scheduler,         "F", "N", "N"},
+    {"GAFF",         GA_scheduler,         "F", "F", "N"},
+    {"GAFFF",        GA_scheduler,         "F", "F", "F"},
+    {NULL,           NULL,                 NULL,      NULL, NULL}
 };
-
-/* Local Prototype (sloppy for now) */
-float compute_minimum_yield();
-float compute_average_yield();
-void maximize_average_yield();
 
 /* Utility function */
 void free_2D_int_array(int **a, int n)
@@ -139,6 +133,8 @@ void initialize_global_server_loads()
   }
 }
 
+int glp_stderr_out(void *info, const char *s);
+
 /* Wrapperss around GLPK 
  * Returns 0 on success
  * Returns 1 if couldn't solve
@@ -152,6 +148,9 @@ int solve_linear_program(int rational, int verbose, glp_prob *prob)
     fprintf(stderr,"Writing LP to file 'linearprogram'..");
     glp_write_lp(prob, NULL, "linearprogram");
     fprintf(stderr,"done\n");
+  } else {
+    // kill lp output
+    glp_term_hook(&glp_stderr_out, NULL);
   }
 
   if (rational) {
@@ -195,9 +194,6 @@ int solve_linear_program(int rational, int verbose, glp_prob *prob)
 
 
 int glp_stderr_out(void *info, const char *s) {
-#if VERBOSE
-    fprintf(stderr, s);
-#endif
     return 1;
 }
 
@@ -208,9 +204,6 @@ glp_prob *create_placement_lp(int rational) {
     int R = INS.numrigid;
     int F = INS.numfluid;
     int row, i, j, h, k;
-
-    // Redirect output
-    glp_term_hook(&glp_stderr_out, NULL);
 
     // Create GLPK problem
     prob = glp_create_prob();
@@ -1554,21 +1547,23 @@ int FASTDIVING_scheduler(char *ignore1, char *ignore2, char *ignore3)
 /* generate_vp_instance() */
 struct vp_instance *generate_vp_instance(float yield) 
 {
-  int i,j,dim_counter;
+  int i, j, dim_counter;
   struct vp_instance *instance;
 
   // INPUT
   instance = (struct vp_instance *)calloc(1, sizeof(struct vp_instance));
-  instance->num_vectors = INS.numservices;
   instance->num_dims = INS.numrigid + INS.numfluid;
-  instance->vectors = (struct vp_vector *)calloc(
-                   instance->num_vectors,sizeof(struct vp_vector));
+  instance->num_vectors = INS.numservices;
+  instance->num_bins = INS.numservers;
+  instance->vectors = (struct vp_vector *)
+    calloc(instance->num_vectors, sizeof(struct vp_vector));
+  instance->bins = (struct vp_vector *)
+    calloc(instance->num_bins, sizeof(struct vp_vector));
   instance->mapping = (int *)calloc(instance->num_vectors,sizeof(int));
   for (i=0; i<instance->num_vectors; i++) {
     instance->vectors[i].service = i;
     instance->vectors[i].num_dims = INS.numrigid + INS.numfluid;
-    instance->vectors[i].x = (float *)calloc(
-             instance->vectors[i].num_dims, sizeof(float));
+    instance->vectors[i].x = (float *)calloc(instance->num_dims, sizeof(float));
     dim_counter = 0;
     for (j=0; j < INS.numrigid; dim_counter++, j++) {
       instance->vectors[i].x[dim_counter] = INS.rigidneeds[i][j]; 
@@ -1578,9 +1573,19 @@ struct vp_instance *generate_vp_instance(float yield)
               ((1.0 - INS.slas[i])*yield + INS.slas[i]) * INS.fluidneeds[i][j]; 
     }
   }
+  for (i = 0; i < instance->num_bins; i++) {
+    instance->bins[i].num_dims = INS.numrigid + INS.numfluid;
+    instance->bins[i].x = (float *)calloc(instance->num_dims, sizeof(float));
+    dim_counter = 0;
+    for (j = 0; j < INS.numrigid; dim_counter++, j++) {
+        instance->bins[i].x[dim_counter] = INS.rigidcapacities[i][j];
+    }
+    for (j = 0; j < INS.numrigid; dim_counter++, j++) {
+        instance->bins[i].x[dim_counter] = INS.fluidcapacities[i][j];
+    }
+  }
 
   // OUTPUT
-  instance->num_bins = 0;
   for (i=0; i < instance->num_vectors; i++)
     instance->mapping[i] = -1; // initialized to "not mapped"
 
@@ -1605,7 +1610,11 @@ void free_vp_instance(struct vp_instance *instance)
   for (i=0; i<instance->num_vectors; i++) {
     free(instance->vectors[i].x);
   }
+  for (i=0; i<instance->num_bins; i++) {
+    free(instance->bins[i].x);
+  }
   free(instance->vectors);
+  free(instance->bins);
   free(instance->mapping);
   free(instance);
   return;
@@ -1709,7 +1718,7 @@ int vp_vector_can_fit_in_bin(struct vp_instance *vp, int v, int b)
 
   // Check that the load can accomodate the new vector
   for (j=0; j < vp->num_dims; j++) {
-    if (load[j] + vp->vectors[v].x[j] > 1.0)
+    if (load[j] + vp->vectors[v].x[j] > vp->bins[b].x[j])
       return 0;
   }
   return 1;
@@ -1719,10 +1728,9 @@ int vp_vector_can_fit_in_bin(struct vp_instance *vp, int v, int b)
 int vp_vector_can_fit_in_bin_fast(struct vp_instance *vp, int v, int b) 
 {
   int i,j;
-  float load[vp->num_dims]; 
 
   for (j=0; j < vp->num_dims; j++)  {
-    if (global_vp_bin_loads[b][j] + vp->vectors[v].x[j] > 1.0) {
+    if (global_vp_bin_loads[b][j] + vp->vectors[v].x[j] > vp->bins[b].x[j]) {
       return 0;
     }
   }
@@ -1849,8 +1857,8 @@ int solve_vp_instance_FITD(const char *fit_type,
 #endif
 
   // Allocate and initialize vp_bin_loads 
-  global_vp_bin_loads = (float **)calloc(vp->num_vectors,sizeof(float*));
-  for (k=0; k < vp->num_vectors; k++) {
+  global_vp_bin_loads = (float **)calloc(vp->num_bins,sizeof(float*));
+  for (k=0; k < vp->num_bins; k++) {
     global_vp_bin_loads[k] = (float *)calloc(vp->num_dims, sizeof(float));
   }
 
@@ -1859,7 +1867,7 @@ int solve_vp_instance_FITD(const char *fit_type,
   // Place vectors into bins
   for (i=0; i < vp->num_vectors; i++) {
     if (!strcmp(fit_type, "FIRST")) { // First Fit
-      for (j=0; j<vp->num_vectors; j++) { // At worst, one bin per job
+      for (j=0; j < vp->num_bins; j++) {
         if (vp_vector_can_fit_in_bin_fast(vp, i, j)) {
           vp->mapping[i] = j;        
           for (k=0; k < vp->num_dims; k++) {
@@ -1878,7 +1886,7 @@ int solve_vp_instance_FITD(const char *fit_type,
         fprintf(stderr,"%.2f ",vp->vectors[i].x[j]);
       fprintf(stderr,"(svc=%d) into a bin\n",i);
 #endif
-      for (j=0; j<vp->num_vectors; j++) { // At worst one bin per vector
+      for (j=0; j<vp->num_bins; j++) { 
         if (!vp_vector_can_fit_in_bin_fast(vp, i, j)) {
 #ifdef FIT_DEBUG
           fprintf(stderr,"  can't fit in bin %d\n",j);
@@ -1911,7 +1919,7 @@ int solve_vp_instance_FITD(const char *fit_type,
            vp->mapping[i]);
 #endif
   }
-  vp->num_bins = (max_bin+1);
+  //vp->num_bins = (max_bin+1);
 
   for (k=0; k < vp->num_vectors; k++) {
     free(global_vp_bin_loads[k]);
@@ -1920,6 +1928,7 @@ int solve_vp_instance_FITD(const char *fit_type,
 
   // Apply the Marumaya optimization in case it helps, if
   // we didn't just do it
+  // FIXME: num_bins should never be bigger than num_servers these days
   if (vp->num_bins > INS.numservers) {
     if (strcmp(sort_type,"MARUYAMA")) {
       int status;
@@ -2101,7 +2110,7 @@ void add_to_list_of_lists(int first_dim, int second_dim,
  *  just to be a bit more efficient
  */
 struct vp_vector *MCB_find_and_extract_feasible_vector_in_list(
-                  int num_dims, float *bin_load, 
+                  int num_dims, float *bin_load, float *bin_capacity,
                   struct vp_vector **list, int *list_size)
 {
   struct vp_vector *vector;
@@ -2112,9 +2121,9 @@ struct vp_vector *MCB_find_and_extract_feasible_vector_in_list(
     // for (j=0; j < num_dims; j++) 
     //   fprintf(stderr,"%.2f ",list[i]->x[j]);
     // fprintf(stderr,"\n");
-    
     for (j=0; j < num_dims; j++) {
-      if (1.0 - bin_load[j] < list[i]->x[j])
+      // FIXME: should probably be using vector fits in bin function here...
+      if (bin_capacity[j] - bin_load[j] < list[i]->x[j])
         break;
     }
     if (j >= num_dims) 
@@ -2141,6 +2150,7 @@ struct vp_vector *MCB_find_and_extract_feasible_vector_in_list(
  */
 struct vp_vector *MCB_pick_vector(int isPP,
                                   int num_dims, float *bin_load,
+                                  float *bin_capacity,
                                   struct vp_vector ****lists, 
                                   int **list_sizes)
 {
@@ -2217,7 +2227,7 @@ struct vp_vector *MCB_pick_vector(int isPP,
     fprintf(stderr,"\n");
 #endif
     vector = MCB_find_and_extract_feasible_vector_in_list(
-                  num_dims, bin_load, list, list_size); 
+                  num_dims, bin_load, bin_capacity, list, list_size); 
     if (vector) {// We found a vector in the list
 //      fprintf(stderr,"    Picked vector corr to svc. %d in LIST[%d][%d]\n",
 //                vector->service, first_dims[i],second_dims[i]);
@@ -2364,20 +2374,17 @@ int solve_vp_instance_MCB(char *pack, char *sort_type,
   }
 
   // Go through bins
-  int bin=0;
-  int num_vectors_picked=0;
+  int bin = 0;
+  int num_vectors_picked = 0;
 
-  // This is conservative: at most one bin per service
-  // Could be replaced with a dynamic array, but I opted
-  // for the simple, if a bit wasteful, solution
-  float load[vp->num_vectors][vp->num_dims];
+  float load[vp->num_bins][vp->num_dims];
 
   // Set the loads to zero
-  for (i=0; i < vp->num_vectors; i++) 
+  for (i=0; i < vp->num_bins; i++) 
     for (j=0; j < vp->num_dims; j++)
       load[i][j] = 0.0;
   
-  while (1) {
+  while (bin < vp->num_bins && num_vectors_picked < vp->num_vectors) {
     struct vp_vector *vector;
     // Pick the vector to put in the bin
     // This call removes the vector from lists
@@ -2388,20 +2395,12 @@ int solve_vp_instance_MCB(char *pack, char *sort_type,
     fprintf(stderr,"\n");
 #endif
  
-    vector = MCB_pick_vector(isPP, vp->num_dims, load[bin],  lists, list_sizes);
+    vector = MCB_pick_vector(isPP, vp->num_dims, load[bin], vp->bins[bin].x,  lists, list_sizes);
     if (!vector) { // Couldn't find a vector, go to next bin
-#ifdef MCB_DEBUG
-      fprintf(stderr,"Can't find a vector, adding a new bin\n");
-#endif
       bin++;
       continue;
     } 
-#ifdef MCB_DEBUG
-    fprintf(stderr,"Picked vector: ");
-    for (j=0; j < vp->num_dims; j++)
-      fprintf(stderr,"%.2f ",vector->x[j]);
-    fprintf(stderr," (svc %d)\n",vector->service);
-#endif
+
     // Update the mapping
     vp->mapping[vector->service] = bin;
     // Update the load of the bin
@@ -2409,8 +2408,6 @@ int solve_vp_instance_MCB(char *pack, char *sort_type,
       load[bin][j] += vector->x[j];
     // Are we done?
     num_vectors_picked++;
-    if (num_vectors_picked == vp->num_vectors)
-      break; 
   }
 
   // Free some memory
@@ -2425,9 +2422,7 @@ int solve_vp_instance_MCB(char *pack, char *sort_type,
   free(lists);
   free(list_sizes);
 
-  // Return the number of bins used
-  vp->num_bins = bin+1;
-  return VP_SOLVED;
+  return (num_vectors_picked < vp->num_vectors) ? VP_NOT_SOLVED: VP_SOLVED;
 }
 
 //#define CHEKURI_DEBUG 1
@@ -2449,7 +2444,6 @@ glp_prob *CHEKURI_create_lp(struct vp_instance *vp, int m)
   //   - k: resource dimensions
 
   // Create GLPK problem
-  glp_term_hook(&glp_stderr_out, NULL);
   prob = glp_create_prob();
   glp_set_prob_name(prob, "CHEKURI task placement");
 
@@ -2876,7 +2870,7 @@ int solve_vp_instance_CHEKURI(struct vp_instance *vp)
 #endif
 
   // Compute the "output" of the vp instance
-  vp->num_bins = last_successful_num_bins;
+  // vp->num_bins = last_successful_num_bins;
 
   // integer assignments
   if (CHEKURI_process_integer_assignments(vp,last_solved_prob)) {
@@ -2971,12 +2965,7 @@ int VP_scheduler(char *vp_algorithm, char *ignore2, char *ignore3)
     vp = generate_vp_instance(yield);
 
     // Solve the VP instance
-    if ((status = solve_vp_instance(vp, vp_algorithm)) != VP_SOLVED) {
-      fprintf(stderr,"FAILED\n");
-      return RESOURCE_ALLOCATION_FAILURE;
-    }
-     
-    if (vp->num_bins <= INS.numservers) {
+    if ((status = solve_vp_instance(vp, vp_algorithm)) == VP_SOLVED) {
       yieldlb = yield; 
       best_yield = yield;
 #if 0
@@ -3324,8 +3313,10 @@ int sanity_check()
           continue;
         load += INS.rigidneeds[service][j];
       }
-      if (load > 1.0 + EPSILON) {
-        fprintf(stderr,"Error: Rigid Capacity %d of server %d exceeded (%f)\n", j, server, load);
+      if (load > INS.rigidcapacities[server][j] + EPSILON) {
+        fprintf(stderr,
+          "Error: Rigid Capacity %d of server %d exceeded (%f/%f)\n", j, server,
+          load, INS.rigidcapacities[server][j]);
         return_value = RESOURCE_ALLOCATION_FAILURE;
       } else {
     //    fprintf(stderr,"Rigid load #%d = %f\n",j,load);
@@ -3337,13 +3328,13 @@ int sanity_check()
       for (service=0; service < INS.numservices; service++) {
         if (INS.mapping[service] != server)
           continue;
-        load += INS.fluidneeds[service][j] * 
-           (INS.allocation[service] + INS.slas[service]*(1 - INS.allocation[service]));
-//        fprintf(stderr,"load due to service %d: %f * (%f + %f * (1 - %f)) = %f\n",service,fluidneeds[service][j], allocation[service], slas[service],allocation[service], fluidneeds[service][j] * (allocation[service] + slas[service]*(1 - allocation[service])));
+        load += INS.fluidneeds[service][j] * (INS.allocation[service] + 
+          INS.slas[service]*(1 - INS.allocation[service]));
       }
-      if (load > 1.0 + EPSILON) {
-        fprintf(stderr,"Error: Fluid Capacity %d of server %d exceeded (%f)\n",
-                   j, server, load);
+      if (load > INS.fluidcapacities[server][j] + EPSILON) {
+        fprintf(stderr,
+          "Error: Fluid Capacity %d of server %d exceeded (%f/%f)\n",
+          j, server, load, INS.fluidcapacities[server][j]);
         return_value = RESOURCE_ALLOCATION_FAILURE;
       } else {
      //   fprintf(stderr,"Fluid load #%d = %f\n",j,load);

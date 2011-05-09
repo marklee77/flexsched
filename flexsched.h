@@ -1,3 +1,4 @@
+#include <glpk.h>
 #include <sys/time.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,9 +15,8 @@
 #define RANDOM_SEED 6337
 
 #ifndef REALLOC
-#define REALLOC(ptr,size) ((size > 0) ? \
-          (ptr ? realloc(ptr, size) : malloc(size)) : \
-          (ptr ? (free(ptr), NULL) : NULL))
+#define REALLOC(ptr,size) \
+  (((size) > 0) ? realloc(ptr, size) : (free(ptr), NULL))
 #endif
 
 #ifndef MIN
@@ -42,9 +42,9 @@
 #define VP_SOLVED 1
 #define VP_NOT_SOLVED 0
 
-/******************************/
-/****** GLOBAL VARIABLES ******/
-/******************************/
+/*************************************/
+/****** STRUCTURES AND TYPEDEFS ******/
+/*************************************/
 
 struct flexsched_instance {
   int numrigid;
@@ -69,24 +69,8 @@ struct flexsched_instance {
      */
 };
 
-/* Global variable that keeps track of the current problem instance */
-extern struct flexsched_instance INS;
-
-/* This is a global variable that keeps track of server load
-   and that is used to speed up a bunch of the naively implemented
-   algorithms (especially greedy ones) */
-extern float **global_server_fluid_loads;
-extern float **global_server_rigid_loads;
-extern float **global_server_fluidmin_loads;
-
-/* Global for some VP stuff acceleration*/
-extern float **global_vp_bin_loads;
-
-/************************/
-/****** STRUCTURES ******/
-/************************/
-
 /* A vector that needs to be packed */
+// FIXME: do we need the extraneous info here?
 struct vp_vector {
   int service;  // the service to which this vector corresponds
   int num_dims;
@@ -97,12 +81,13 @@ struct vp_vector {
 /* A Vector Packing instance */
 struct vp_instance {
   // INPUT
-  int num_vectors;
   int num_dims;
+  int num_vectors;
+  int num_bins;
   struct vp_vector *vectors;
+  struct vp_vector *bins;
   // OUTPUT
   int *mapping;
-  int num_bins;
 }; 
 
 /* A binary counter */
@@ -127,5 +112,28 @@ struct scheduler_t {
   char *arg3;
 };
 
+/******************************/
+/****** GLOBAL VARIABLES ******/
+/******************************/
+
+/* Global variable that keeps track of the current problem instance */
+extern struct flexsched_instance INS;
+
+/* This is a global variable that keeps track of server load
+   and that is used to speed up a bunch of the naively implemented
+   algorithms (especially greedy ones) */
+extern float **global_server_fluid_loads;
+extern float **global_server_rigid_loads;
+extern float **global_server_fluidmin_loads;
+
+/* Global for some VP stuff acceleration*/
+extern float **global_vp_bin_loads;
+
 extern struct scheduler_t implemented_schedulers[];
 
+/*********************************/
+/****** FUNCTION PROTOTYPES ******/
+/*********************************/
+float compute_minimum_yield();
+float compute_average_yield();
+void maximize_average_yield();
