@@ -18,10 +18,10 @@ NEEDCV="0.5 1.0 2.0"
 SLAPROB="0.0 0.25 0.5"
 SLAVALUE=".5"
 
-\rm -rf $BASEDIR
+rm -rf $BASEDIR
+mkdir $BASEDIR
 echo "./genprobset.sh $BASEDIR \"$NUMINSTANCES\" \"$NUMRIGID\" \"$NUMFLUID\" \"$NUMSERVERS\" \"$NUMSERVICES\" \"$RIGIDSLACK\" \"$FLUIDMEAN\" \"$NEEDCV\" \"$SLAPROB\" \"$SLAVALUE\""
 ./genprobset.sh $BASEDIR "$NUMINSTANCES" "$NUMRIGID" "$NUMFLUID" "$NUMSERVERS" "$NUMSERVICES" "$RIGIDSLACK" "$FLUIDMEAN" "$NEEDCV" "$SLAPROB" "$SLAVALUE"
-
 
 echo "Number of files (each file = one problem instance): $NUMINSTANCES">> $BASEDIR/README
 echo "">> $BASEDIR/README

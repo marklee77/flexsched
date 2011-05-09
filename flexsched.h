@@ -14,9 +14,9 @@
 #define RANDOM_SEED 6337
 
 #ifndef REALLOC
-#define REALLOC(ptr,size) \
-        (((size) > 0) ? (((ptr) == 0) ? malloc(size) : realloc(ptr, size)) : \
-         (((ptr) == 0) ? 0 : (void *)(free(ptr), 0)))
+#define REALLOC(ptr,size) ((size > 0) ? \
+          (ptr ? realloc(ptr, size) : malloc(size)) : \
+          (ptr ? (free(ptr), NULL) : NULL))
 #endif
 
 #ifndef MIN
@@ -54,6 +54,8 @@ struct flexsched_instance {
   float *slas;
   float **rigidneeds;
   float **fluidneeds;
+  float **rigidcapacities;
+  float **fluidcapacities;
   // output
   int *mapping;
   float *allocation;

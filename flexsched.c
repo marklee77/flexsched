@@ -1,7 +1,6 @@
 #include <glpk.h>
 #include "flexsched.h"
 
-
 /* Global variable that keeps track of the current problem instance */
 struct flexsched_instance INS;
 
@@ -108,9 +107,6 @@ struct scheduler_t implemented_schedulers[] = {
 {NULL,           NULL,                 NULL,      NULL, NULL}
 };
 
-
-
-
 /* Local Prototype (sloppy for now) */
 float compute_minimum_yield();
 float compute_average_yield();
@@ -154,13 +150,13 @@ int solve_linear_program(int rational, int verbose, glp_prob *prob)
 
   if (verbose) { // print out the program
     fprintf(stderr,"Writing LP to file 'linearprogram'..");
-    glp_write_lp(prob,NULL,"linearprogram");
+    glp_write_lp(prob, NULL, "linearprogram");
     fprintf(stderr,"done\n");
   }
 
   if (rational) {
     if (verbose) {fprintf(stderr,"Solving a rational LP ... ");}
-    solver_status = glp_simplex(prob,NULL);
+    solver_status = glp_simplex(prob, NULL);
     solution_status = (glp_get_status(prob) != GLP_OPT);
     if (verbose) {fprintf(stderr,"solver_stat: %d, ",solver_status);}
     if (verbose) {fprintf(stderr,"solution_stat: %d\n",solution_status);}
@@ -171,7 +167,7 @@ int solve_linear_program(int rational, int verbose, glp_prob *prob)
     parm.presolve = GLP_ON;
     parm.tm_lim = 10*60*1000; // 10 minutes time limit!
 
-    solver_status = glp_intopt(prob,&parm);
+    solver_status = glp_intopt(prob, &parm);
     solution_status = (glp_mip_status(prob) != GLP_OPT);
     if (verbose) {fprintf(stderr,"solver_status = %d, ",solver_status);}
     if (verbose) {fprintf(stderr,"solution_status = %d\n",solution_status);}
@@ -199,12 +195,13 @@ int solve_linear_program(int rational, int verbose, glp_prob *prob)
 
 
 int glp_stderr_out(void *info, const char *s) {
-//    fprintf(stderr, s);
+#if VERBOSE
+    fprintf(stderr, s);
+#endif
     return 1;
 }
 
-glp_prob *create_placement_lp(int rational)
-{
+glp_prob *create_placement_lp(int rational) {
     glp_prob *prob;
     int N = INS.numservices;
     int H = INS.numservers;
@@ -212,8 +209,10 @@ glp_prob *create_placement_lp(int rational)
     int F = INS.numfluid;
     int row, i, j, h, k;
 
-    // Create GLPK problem
+    // Redirect output
     glp_term_hook(&glp_stderr_out, NULL);
+
+    // Create GLPK problem
     prob = glp_create_prob();
     glp_set_prob_name(prob, "task placement");
 
@@ -221,62 +220,57 @@ glp_prob *create_placement_lp(int rational)
     //  e_ih: 1 .. NH
     //  y_ih: NH+1 .. 2NH
     //  Y:    2NH+1
-//    fprintf(stderr,"calling glp_add_cols with %d\n",2*N*H+1);
     glp_add_cols(prob, 2*N*H+1);
 
     // Defining convenient variables to reference 
     // columns without too many index calculations
-    int **eih;
-    eih = (int **)calloc(N+1,sizeof(int*));
-    for (i=1; i<=N; i++)
-      eih[i] = (int *)calloc(H+1,sizeof(int));
-    k = 1;
-    for (i=1; i<=N; i++) {
-      for (h=1; h<=H; h++) {
-        eih[i][h] = k++;
-      }
+    int **eih, **yih;
+    eih = (int **)calloc(N+1, sizeof(int *));
+    yih = (int **)calloc(N+1, sizeof(int *));
+    for (i = 1; i <= N; i++) {
+        eih[i] = (int *)calloc(H+1, sizeof(int));
+        yih[i] = (int *)calloc(H+1, sizeof(int));
     }
-    int **yih;
-    yih = (int **)calloc(N+1,sizeof(int*));
-    for (i=1; i<=N; i++)
-      yih[i] = (int *)calloc(H+1,sizeof(int));
+    j = 1;
     k = N*H+1;
-    for (i=1; i<=N; i++) {
-      for (h=1; h<=H; h++) {
+    for (i = 1; i <= N; i++) {
+      for (h = 1; h <= H; h++) {
+        eih[i][h] = j++;
         yih[i][h] = k++;
       }
     }
     int Y = 2*N*H+1;
+
+    // set column name of Y
     glp_set_col_name(prob, Y, "Y");
 
     // Set bounds for the min yield: between 0 and 1.0
-    glp_set_col_name(prob, Y, "Y");
     glp_set_col_bnds(prob, Y, GLP_DB, 0.0, 1.0);
 
 
     // Set bounds for the e_ij: binary if !rational
-    k = 1;
-    for (i=1; i<= N; i++) {
-      for (j=1; j<= H; j++) {
+    for (i = 1; i <= N; i++) {
+      for (h = 1; h <= H; h++) {
          char buffer[10];
-         sprintf(buffer,"e_{%d,%d}",i,j);
-         if (!rational) {
-           glp_set_col_kind(prob, k, GLP_BV);
+         sprintf(buffer,"e_{%d,%d}", i, h);
+         glp_set_col_name(prob, eih[i][h], buffer);
+         if (rational) {
+           glp_set_col_kind(prob, eih[i][h], GLP_CV);
+           glp_set_col_bnds(prob, eih[i][h], GLP_DB, 0.0, 1.0);
          } else {
-           glp_set_col_bnds(prob, k, GLP_DB, 0.0, 1.0);
+           glp_set_col_kind(prob, eih[i][h], GLP_BV);
          }
          k++;
       }
     }
 
     // Set bounds for the y_ij: positive
-    k = N*H+1;
-    for (i=1; i<= N; i++) {
-      for (j=1; j<= H; j++) {
+    for (i = 1; i <= N; i++) {
+      for (h = 1; h <= H; h++) {
          char buffer[10];
-         sprintf(buffer,"y_{%d,%d}",i,j);
-         glp_set_col_name(prob, k, buffer);
-         glp_set_col_bnds(prob, k, GLP_LO,0.0,-666);
+         sprintf(buffer,"y_{%d,%d}", i, h);
+         glp_set_col_name(prob, yih[i][h], buffer);
+         glp_set_col_bnds(prob, yih[i][h], GLP_LO, 0.0, 0.0);
          k++;
       }
     }
@@ -289,12 +283,12 @@ glp_prob *create_placement_lp(int rational)
 
     // Number of rows  
     //  (A) for all i 	   sum_h e_ih = 1:       		  N rows
-    //  (B) for all i,h	   y_ih <= e_ih				  NH rows
+    //  (B) for all i,h	   y_ih <= e_ih				      NH rows
     //  (C) for all i      sum_h y_ih >= sla_i			  N rows
     //  (D) for all h, jr  sum_i r_ij*e_ih <= 1			  HR rows
     //  (E) for all h, jf  sum_i r_ij*y_ih <= 1			  HF rows
     //  (F) for all i	   (sum_h y_ih - sla_i)/(1-sla_i) >= Y	  N rows
-    glp_add_rows(prob, N+N*H+N+H*(F+R)+N);
+    glp_add_rows(prob, N+N*H+N+H*R+H*F+N);
 //    fprintf(stderr,"Adding %d rows to the problem\n",N+N*H+N+H*(F+R)+N);
 
     // compute the number of non-zero matrix elements
@@ -309,7 +303,7 @@ glp_prob *create_placement_lp(int rational)
     row = 1;
 //    fprintf(stderr,"Constraints (A): k = %d\n",k);
     for (i=1; i <= N; i++) {
-      glp_set_row_bnds(prob,row,GLP_FX,1.0,1.0);
+      glp_set_row_bnds(prob, row, GLP_FX, 1.0, 1.0);
       for (h=1; h <= H; h++) {
         ia[k] = row; ja[k] = eih[i][h]; ra[k] = 1.0; k++;
       }
@@ -321,9 +315,9 @@ glp_prob *create_placement_lp(int rational)
     //  (B) for all i,h	   y_ih <= e_ih			N+1 .. N(H+1)+1
     row = N+1;
 //    fprintf(stderr,"Constraints (B): k = %d\n",k);
-    for (i=1; i <= N; i++) {
-      for (h=1; h <= H; h++) {
-        glp_set_row_bnds(prob,row,GLP_UP,-666,0.0);
+    for (i = 1; i <= N; i++) {
+      for (h = 1; h <= H; h++) {
+        glp_set_row_bnds(prob, row, GLP_UP, -666, 0.0);
         ia[k] = row; ja[k] = yih[i][h]; ra[k] = 1.0;  k++;
         ia[k] = row; ja[k] = eih[i][h]; ra[k] = -1.0; k++;
         row++;
@@ -335,9 +329,9 @@ glp_prob *create_placement_lp(int rational)
     //  (C) for all i      sum_h y_ih >= sla_i		N(H+1)+2 .. N(H+2)+2
     row = N + N*H + 1;
 //    fprintf(stderr,"Constraints (C): k = %d\n",k);
-    for (i=1; i<=N; i++) {
-      glp_set_row_bnds(prob,row,GLP_LO,INS.slas[i-1],666);
-      for (h=1; h <= H; h++) {
+    for (i = 1; i <= N; i++) {
+      glp_set_row_bnds(prob, row, GLP_LO, INS.slas[i-1], 666);
+      for (h = 1; h <= H; h++) {
         ia[k] = row; ja[k] = yih[i][h]; ra[k] = 1.0; k++;
       }
       row++;
@@ -349,7 +343,7 @@ glp_prob *create_placement_lp(int rational)
 //    fprintf(stderr,"Constraints (D): k = %d\n",k);
     for (h=1; h<=H; h++) {
       for (j=1; j <= R; j++) {
-        glp_set_row_bnds(prob,row,GLP_UP,666,1.0);
+        glp_set_row_bnds(prob, row, GLP_UP, -666, INS.rigidcapacities[h-1][j-1]);
         for (i=1; i <= N; i++) {
           ia[k] = row; ja[k] = eih[i][h]; ra[k] = INS.rigidneeds[i-1][j-1]; k++;
         } 
@@ -363,7 +357,7 @@ glp_prob *create_placement_lp(int rational)
 //    fprintf(stderr,"Constraints (E): k = %d\n",k);
     for (h=1; h <= H; h++) {
       for (j=1; j <= F; j++) {
-        glp_set_row_bnds(prob,row,GLP_UP,666,1.0);
+        glp_set_row_bnds(prob, row, GLP_UP, 666, INS.fluidcapacities[h-1][j-1]);
         for (i=1; i <= N; i++) {
           ia[k] = row; ja[k] = yih[i][h]; ra[k] = INS.fluidneeds[i-1][j-1]; k++;
         } 
@@ -379,7 +373,7 @@ glp_prob *create_placement_lp(int rational)
     row = N + N*H + N + H*R + H*F + 1;
 //    fprintf(stderr,"Constraints (F): k = %d\n",k);
     for (i=1; i <= N; i++) {
-      glp_set_row_bnds(prob,row,GLP_LO,INS.slas[i-1],666);
+      glp_set_row_bnds(prob, row, GLP_LO, INS.slas[i-1],666);
       for (h = 1; h <= H; h++) {
         ia[k] = row; ja[k] = yih[i][h]; ra[k] = 1.0; k++;
       } 
@@ -390,7 +384,6 @@ glp_prob *create_placement_lp(int rational)
     //fprintf(stderr,"k = %d\n",k-1);
     //fprintf(stderr,"ne = %d\n",ne);
     //fprintf(stderr,"row = %d\n",row-1);
-
 
     glp_load_matrix(prob, ne, ia, ja, ra);
 
@@ -404,7 +397,8 @@ glp_prob *create_placement_lp(int rational)
     return prob;
 }
 
-#if 1
+// FIXME: simple calculation assumes homogeneous servers can all support yield
+// of 1.0 over every job...
 double compute_LP_bound()
 {
   int i,j; 
@@ -429,8 +423,6 @@ double compute_LP_bound()
   else 
     return MIN(1.0,minratio);
 }
-#endif
-
 
 int LPBOUND_scheduler(char *ignore1, char *ignore2, char *ignore3)
 {
@@ -495,7 +487,7 @@ int MILP_scheduler(char *ignore1, char *ignore2, char *ignore3)
         k++;
       } else {
         // y_ih in the linear program is the unscaled yield!
-        INS.allocation[i] = (glp_mip_col_val(prob,k++) - INS.slas[i]) /
+        INS.allocation[i] = (glp_mip_col_val(prob, k++) - INS.slas[i]) /
                         (1 - INS.slas[i]);
 //        fprintf(stderr,"Mapping[%d] = %d\n", i, mapping[i]);
 //        fprintf(stderr,"Allocation[%d] = %f\n", i, allocation[i]);
@@ -861,7 +853,8 @@ int service_can_fit_on_server(int service, int server)
       load += INS.rigidneeds[i][j];
     } 
     // BEWARE OF THE EPSILON
-    if (1.0 - load  + EPSILON < INS.rigidneeds[service][j]) {
+    if (INS.rigidcapacities[server][j] - load + EPSILON < 
+      INS.rigidneeds[service][j]) {
       return 0;
     }
   }
@@ -876,7 +869,8 @@ int service_can_fit_on_server(int service, int server)
         continue;
       load += INS.slas[i] * INS.fluidneeds[i][j];
     } 
-    if (1.0 - load + EPSILON < INS.slas[service] * INS.fluidneeds[service][j])
+    if (INS.fluidcapacities[server][j] - load + EPSILON < INS.slas[service] * 
+      INS.fluidneeds[service][j])
       return 0;
   }
 
@@ -890,14 +884,17 @@ int service_can_fit_on_server_fast(int service, int server)
   // Rigid needs
   for (j=0; j < INS.numrigid; j++) {
     // BEWARE OF THE EPSILON
-    if (1.0 - global_server_rigid_loads[server][j] + EPSILON < INS.rigidneeds[service][j]) {
+    if (INS.rigidcapacities[server][j] - global_server_rigid_loads[server][j] + 
+      EPSILON < INS.rigidneeds[service][j]) {
       return 0;
     }
   }
   // Rigid needs
   for (j=0; j < INS.numfluid; j++) {
     // BEWARE OF THE EPSILON
-    if (1.0 - global_server_fluidmin_loads[server][j] + EPSILON < INS.slas[service] * INS.fluidneeds[service][j]) {
+    if (INS.fluidcapacities[server][j] - 
+      global_server_fluidmin_loads[server][j] + EPSILON < 
+      INS.slas[service] * INS.fluidneeds[service][j]) {
       return 0;
     }
   }
@@ -921,7 +918,7 @@ int GREEDY_pick_server_P1(int service)
       continue;
     }
     load = compute_server_load_in_dimension_fast(
-               i, "fluid",array_argmax(INS.fluidneeds[service],INS.numfluid)); 
+               i, "fluid", array_argmax(INS.fluidneeds[service], INS.numfluid));
     if ((minload == -1.0) || (load < minload)) {
       minload = load;
       picked = i;
@@ -1109,13 +1106,16 @@ int GREEDY_compute_mapping(const char *P, int *sorted)
     }
     /* Update the server loads */
     for (j=0; j < INS.numrigid; j++) {
-      global_server_rigid_loads[INS.mapping[sorted[i]]][j] += INS.rigidneeds[sorted[i]][j];
+      global_server_rigid_loads[INS.mapping[sorted[i]]][j] += 
+        INS.rigidneeds[sorted[i]][j];
     }
     for (j=0; j < INS.numfluid; j++) {
-      global_server_fluid_loads[INS.mapping[sorted[i]]][j] += INS.fluidneeds[sorted[i]][j];
+      global_server_fluid_loads[INS.mapping[sorted[i]]][j] += 
+        INS.fluidneeds[sorted[i]][j];
     }
     for (j=0; j < INS.numfluid; j++) {
-      global_server_fluidmin_loads[INS.mapping[sorted[i]]][j] += INS.slas[sorted[i]]  * INS.fluidneeds[sorted[i]][j];
+      global_server_fluidmin_loads[INS.mapping[sorted[i]]][j] += 
+        INS.slas[sorted[i]]  * INS.fluidneeds[sorted[i]][j];
     }
   }
   return RESOURCE_ALLOCATION_SUCCESS;
@@ -1132,15 +1132,15 @@ void compute_allocations_given_mapping(int server)
   float yield, yield_min;
 
   yield_min = -1.0;
-  for (j=0; j<INS.numfluid; j++) {
-    float sum1=0.0, sum2=0.0;
-    for (i=0; i<INS.numservices; i++) {
+  for (j = 0; j < INS.numfluid; j++) {
+    float sum1 = 0.0, sum2 = 0.0;
+    for (i=0; i < INS.numservices; i++) {
       if (INS.mapping[i] != server)
         continue;
       sum1 += INS.slas[i] * INS.fluidneeds[i][j];
-      sum2 += (1 - INS.slas[i]) * INS.fluidneeds[i][j];
+      sum2 += (1.0 - INS.slas[i]) * INS.fluidneeds[i][j];
     }
-    yield = MIN(1,(1 - sum1) / sum2);
+    yield = MIN(1.0, (INS.fluidcapacities[server][j] - sum1) / sum2);
     if ((yield_min == -1.0) || (yield < yield_min))
       yield_min = yield;
   }
@@ -3013,6 +3013,7 @@ int VP_scheduler(char *vp_algorithm, char *ignore2, char *ignore3)
   return RESOURCE_ALLOCATION_SUCCESS;
 }
 
+#if 1
 int GA_scheduler(char *arg1, char *arg2, char *arg3)
 {
   int i;
@@ -3045,6 +3046,7 @@ int GA_scheduler(char *arg1, char *arg2, char *arg3)
   
   return RESOURCE_ALLOCATION_SUCCESS;
 }
+#endif
 
 
 
@@ -3114,10 +3116,10 @@ float compute_potential_yield_increase(int service, int server)
 {
   float current_yield = INS.allocation[service];
   float min_potential_yield_increase = -1.0;
-  int i,j;
+  int i, j;
   
   for (j=0; j<INS.numfluid; j++) {
-    float free_resource = 1.0;
+    float free_resource = INS.fluidcapacities[server][j];
     float potential_yield_increase;
     float potential_new_yield;
     // compute free resource
@@ -3421,16 +3423,28 @@ int main(int argc, char *argv[])
     fscanf(input,"%d", &INS.numservers);
     fscanf(input,"%d", &INS.numservices);
 
+    INS.rigidcapacities = (float **)calloc(INS.numservers, sizeof(float *));
+    INS.fluidcapacities = (float **)calloc(INS.numservers, sizeof(float *));
+    for (i=0; i < INS.numservers; i++) {
+        INS.rigidcapacities[i] = (float *)calloc(INS.numrigid,sizeof(float *));
+        INS.fluidcapacities[i] = (float *)calloc(INS.numfluid,sizeof(float *));
+    }
     INS.slas = (float *)calloc(INS.numservices,sizeof(float));
     INS.rigidneeds = (float **)calloc(INS.numservices,sizeof(float*));
-    for (i=0; i<INS.numservices; i++)
-      INS.rigidneeds[i] = (float *)calloc(INS.numrigid,sizeof(float));
     INS.fluidneeds = (float **)calloc(INS.numservices,sizeof(float*));
-    for (i=0; i<INS.numservices; i++)
+    for (i=0; i<INS.numservices; i++) {
+      INS.rigidneeds[i] = (float *)calloc(INS.numrigid,sizeof(float));
       INS.fluidneeds[i] = (float *)calloc(INS.numfluid,sizeof(float));
+    }
     INS.mapping = (int *)calloc(INS.numservices,sizeof(int));
     INS.allocation = (float *)calloc(INS.numservices,sizeof(float));
 
+    for (i = 0; i < INS.numservers; i++) {
+        for (j=0; j < INS.numrigid; j++)
+            fscanf(input,"%f", &(INS.rigidcapacities[i][j]));
+        for (j=0; j < INS.numfluid; j++)
+            fscanf(input,"%f", &(INS.fluidcapacities[i][j]));
+    }
     for (i = 0; i < INS.numservices; i++) {
       fscanf(input,"%f", &(INS.slas[i]));
       for (j=0; j<INS.numrigid; j++) 
@@ -3480,11 +3494,11 @@ int main(int argc, char *argv[])
 	exit(1);
       }
 
-      // if we did find it, then run it
-      gettimeofday(&time1, NULL);
-
       // Initialize the server loads 
       initialize_global_server_loads();
+
+      // if we did find it, then run it
+      gettimeofday(&time1, NULL);
 
       // Call the scheduler
       status = implemented_schedulers[sched].func(
@@ -3543,6 +3557,16 @@ int main(int argc, char *argv[])
       fprintf(output,"%.3f|",elasped_seconds);
       fprintf(output,"%s\n",INS.misc_output);
     }
+#if 0
+    for (i = 0; i < INS.numservices; i++) {
+        printf("%d\t", INS.mapping[i]);
+    }
+    printf("\n");
+    for (i = 0; i < INS.numservices; i++) {
+        printf("%f\t", INS.allocation[i]);
+    }
+    printf("\n");
+#endif
 //    fprintf(output,"##################\n");
 
     for (schedulerptr = schedulers; *schedulerptr; schedulerptr++) 
