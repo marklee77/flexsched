@@ -5,14 +5,22 @@
 #include <math.h>
 #include <string.h>
 
-/****************************/
-/****** VARIOUS MARCOS ******/
-/****************************/
+#ifndef FLEXSCHED_H
+#define FLEXSCHED_H
 
-
+/****************************/
+/**** PARAMETER CONSTANTS ***/
+/****************************/
 #define EPSILON 0.00001
 
 #define RANDOM_SEED 6337
+
+#define GLPK_TIME_LIMIT 10*60*1000 // 10 minutes in milliseconds
+
+
+/****************************/
+/****** VARIOUS MARCOS ******/
+/****************************/
 
 #ifndef REALLOC
 #define REALLOC(ptr,size) \
@@ -20,11 +28,15 @@
 #endif
 
 #ifndef MIN
-#define MIN(x,y) ((x) > (y) ? (y) : (x))
+#define MIN(x,y) (((x) > (y)) ? (y) : (x))
 #endif
 
 #ifndef MAX   
-#define MAX(x,y) ((x) < (y) ? (y) : (x))
+#define MAX(x,y) (((x) < (y)) ? (y) : (x))
+#endif
+
+#ifndef CMP
+#define CMP(x, y) (((x) == (y)) ? 0 : (((x) < (y)) ? 1 : -1))
 #endif
 
 #define RESOURCE_ALLOCATION_FAILURE 1
@@ -32,9 +44,6 @@
 
 #define INTEGER  0
 #define RATIONAL 1
-
-#define NOT_VERBOSE 0
-#define VERBOSE 1
 
 #define SLOW_DIVE 0
 #define FAST_DIVE 1
@@ -134,6 +143,24 @@ extern struct scheduler_t implemented_schedulers[];
 /*********************************/
 /****** FUNCTION PROTOTYPES ******/
 /*********************************/
+
+/* utility function prototypes */
 float compute_minimum_yield();
 float compute_average_yield();
 void maximize_average_yield();
+
+/* Scheduler function prototypes */
+int GREEDY_scheduler(char*,char*,char*);
+int METAGREEDY_scheduler(char*,char*,char*);
+int METAGREEDYLIGHT_scheduler(char*,char*,char*);
+int MILP_scheduler(char*,char*,char*);
+int LPBOUND_scheduler(char*,char*,char*);
+int RRND_scheduler(char*,char*,char*);
+int RRNZ_scheduler(char*,char*,char*);
+int SLOWDIVING_scheduler(char*,char*,char*);
+int FASTDIVING_scheduler(char*,char*,char*);
+int VP_scheduler(char*,char*,char*);
+int GA_scheduler(char*,char*,char*);
+
+
+#endif
