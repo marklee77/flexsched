@@ -1,17 +1,6 @@
 #include "flexsched.h"
 
-/* Global variable that keeps track of the current problem instance */
-struct flexsched_instance INS;
-
-/* This is a global variable that keeps track of server load
-*     and that is used to speed up a bunch of the naively implemented
-*        algorithms (especially greedy ones) */
-float **global_server_fluid_loads;
-float **global_server_rigid_loads;
-float **global_server_fluidmin_loads;
-
-/* Global for some VP stuff acceleration*/
-float **global_vp_bin_loads;
+flexsched_problem flex_prob = NULL;
 
 struct scheduler_t implemented_schedulers[] = {
     {"GREEDY_S1_P1", GREEDY_scheduler,     "S1", "P1", NULL},
@@ -69,6 +58,7 @@ struct scheduler_t implemented_schedulers[] = {
     {"LPBOUND",      LPBOUND_scheduler,    NULL, NULL, NULL},
     {"RRND",         RRND_scheduler,       NULL, NULL, NULL},
     {"RRNZ",         RRNZ_scheduler,       NULL, NULL, NULL},
+/*
     {"SLOWDIVING",   SLOWDIVING_scheduler, NULL, NULL, NULL},
     {"FASTDIVING",   FASTDIVING_scheduler, NULL, NULL, NULL},
     {"VP_PPMAXDIFF", VP_scheduler,         "PPMAXDIFF", NULL, NULL},
@@ -90,6 +80,7 @@ struct scheduler_t implemented_schedulers[] = {
     {"GAF",          GA_scheduler,         "F", "N", "N"},
     {"GAFF",         GA_scheduler,         "F", "F", "N"},
     {"GAFFF",        GA_scheduler,         "F", "F", "F"},
+*/
     {NULL,           NULL,                 NULL,      NULL, NULL}
 };
 
@@ -98,19 +89,20 @@ struct scheduler_t implemented_schedulers[] = {
  *    the list command-line argument
  */
 char **parse_scheduler_list(char *s) {
-  char **list = NULL;
-  char *sep=" \t";
-  char *scheduler;
-  int count;
+    char **list = NULL;
+    char *sep=" \t";
+    char *scheduler;
+    int count;
 
-  for (count=0, scheduler = strtok(s, sep); scheduler; 
-                  count++,scheduler = strtok(NULL, sep)) {
-    list = (char **)REALLOC(list,(count+1)*sizeof(char*));
-    list[count] = strdup(scheduler);
-  }
-  list = (char **)REALLOC(list,(count+1)*sizeof(char*));
-  list[count] = NULL;
-  return list;
+    count = 0;
+    for (scheduler = strtok(s, sep); scheduler; scheduler = strtok(NULL, sep)) {
+        count++;
+        list = (char **)REALLOC(list, count * sizeof(char*));
+        list[count-1] = strdup(scheduler);
+    }
+    list = (char **)REALLOC(list, (count + 1) * sizeof(char*));
+    list[count] = NULL;
+    return list;
 }
 
 /* remove_existing_scheduler() 
@@ -119,28 +111,30 @@ char **parse_scheduler_list(char *s) {
  */
 void remove_existing_schedulers(char **list, char *file)
 {
-  FILE *f;
-  char buffer[1024];
-  char **schedulerptr;
+    FILE *f;
+    char buffer[1024];
+    char **schedulerptr;
 
-  // If not output file, then fine
-  if (!(f = fopen(file,"r"))) {
-    return; 
-  } 
+    // If not output file, then fine
+    if (!(f = fopen(file,"r"))) return; 
 
-  while (fgets(buffer, 1024, f)) {
-    for (schedulerptr=list; *schedulerptr; schedulerptr++) {
-      if (strcmp(*schedulerptr,"not_needed")) {
-        if (strstr(buffer, *schedulerptr)) {
-          fprintf(stderr,"Warning: no need to re-run algorithm '%s'\n",*schedulerptr);
-          free(*schedulerptr);
-	  *schedulerptr = (char*)strdup("not_needed");
+    while (fgets(buffer, 1024, f)) {
+        for (schedulerptr = list; *schedulerptr; schedulerptr++) {
+            if (strcmp(*schedulerptr, "not_needed")) {
+                if (strstr(buffer, *schedulerptr)) {
+                    fprintf(stderr, 
+                        "Warning: no need to re-run algorithm '%s'\n",
+                        *schedulerptr);
+                    free(*schedulerptr);
+	                *schedulerptr = (char*)strdup("not_needed");
+                }
+            }
         }
-      }
     }
-  }
-  fclose(f);
-  return;
+
+    fclose(f);
+
+    return;
 }
 
 int main(int argc, char *argv[])
@@ -150,205 +144,176 @@ int main(int argc, char *argv[])
     char **schedulers;
     char **schedulerptr;
 
-    int i,j;
-    int sched;
-    struct timeval time1, time2, time3;
+    int i, j;
+    struct timeval time1, time2;
+    flexsched_solution flex_soln = NULL;
     double elasped_seconds;
     double non_optimized_average_yield;
     double non_optimized_utilization;
 
     if ((argc < 2) || (argc > 4)) {
-        fprintf(stderr,"Usage: %s <scheduler list> [<instance file> [result file]]\n",argv[0]);
-        fprintf(stderr,"  Known schedulers:  "); 
-        sched = 0;
-        while (implemented_schedulers[sched].name) {
-          fprintf(stderr,"%s ",
-              implemented_schedulers[sched].name);
-          sched++; 
-        }
         fprintf(stderr,
-           "\n  See README file for scheduler descriptions\n");
-	exit(1);
-    } 
+            "Usage: %s <scheduler list> [<instance file> [result file]]\n",
+            argv[0]);
+        fprintf(stderr,"  Known schedulers:  "); 
+        for (i = 0; implemented_schedulers[i].name; i++) {
+            fprintf(stderr, "%s ", implemented_schedulers[i].name);
+        }
+        fprintf(stderr, "\n  See README file for scheduler descriptions\n");
+	    exit(1);
+    }
 
     // schedulers
     schedulers = parse_scheduler_list(argv[1]);
 
     // input
     if (argc < 3) {
-	input = stdin;
-    } else {
-	if (!(input = fopen(argv[2],"r"))) {
-	  fprintf(stderr,"Can't open file '%s' for reading\n",argv[2]);
-	  exit(1);
-   	} 
+	    input = stdin;
+    } else if (!(input = fopen(argv[2], "r"))) {
+	    fprintf(stderr, "Can't open file '%s' for reading\n", argv[2]);
+	    exit(1);
     }
 
     // output 
     if (argc < 4) {
-	output = stdout;
+	    output = stdout;
     } else {
-	remove_existing_schedulers(schedulers, argv[3]);
-	if (!(output = fopen(argv[3],"a"))) {
-	  fprintf(stderr,"Can't open file '%s' for writing/appending\n",argv[3]);
-	  exit(1);
-	}
+	    remove_existing_schedulers(schedulers, argv[3]);
+	    if (!(output = fopen(argv[3],"a"))) {
+	        fprintf(stderr, "Can't open file '%s' for writing/appending\n", 
+                argv[3]);
+	        exit(1);
+	    }
     }
 
     /* Parse instance file */
-    fscanf(input,"%d", &INS.numrigid);
-    fscanf(input,"%d", &INS.numfluid);
-    fscanf(input,"%d", &INS.numservers);
-    fscanf(input,"%d", &INS.numservices);
+    fscanf(input,"%d", &flex_prob->num_rigid);
+    fscanf(input,"%d", &flex_prob->num_fluid);
+    fscanf(input,"%d", &flex_prob->num_servers);
+    fscanf(input,"%d", &flex_prob->num_services);
 
-    INS.rigidcapacities = (float **)calloc(INS.numservers, sizeof(float *));
-    INS.fluidcapacities = (float **)calloc(INS.numservers, sizeof(float *));
-    for (i=0; i < INS.numservers; i++) {
-        INS.rigidcapacities[i] = (float *)calloc(INS.numrigid,sizeof(float *));
-        INS.fluidcapacities[i] = (float *)calloc(INS.numfluid,sizeof(float *));
+    flex_prob->rigid_capacities = 
+        (float **)calloc(flex_prob->num_servers, sizeof(float *));
+    flex_prob->fluid_capacities = 
+        (float **)calloc(flex_prob->num_servers, sizeof(float *));
+    for (i=0; i < flex_prob->num_servers; i++) {
+        flex_prob->rigid_capacities[i] = 
+            (float *)calloc(flex_prob->num_rigid, sizeof(float *));
+        flex_prob->fluid_capacities[i] = 
+            (float *)calloc(flex_prob->num_fluid, sizeof(float *));
     }
-    INS.slas = (float *)calloc(INS.numservices,sizeof(float));
-    INS.rigidneeds = (float **)calloc(INS.numservices,sizeof(float*));
-    INS.fluidneeds = (float **)calloc(INS.numservices,sizeof(float*));
-    for (i=0; i<INS.numservices; i++) {
-      INS.rigidneeds[i] = (float *)calloc(INS.numrigid,sizeof(float));
-      INS.fluidneeds[i] = (float *)calloc(INS.numfluid,sizeof(float));
-    }
-    INS.mapping = (int *)calloc(INS.numservices,sizeof(int));
-    INS.allocation = (float *)calloc(INS.numservices,sizeof(float));
-
-    for (i = 0; i < INS.numservers; i++) {
-        for (j=0; j < INS.numrigid; j++)
-            fscanf(input,"%f", &(INS.rigidcapacities[i][j]));
-        for (j=0; j < INS.numfluid; j++)
-            fscanf(input,"%f", &(INS.fluidcapacities[i][j]));
-    }
-    for (i = 0; i < INS.numservices; i++) {
-      fscanf(input,"%f", &(INS.slas[i]));
-      for (j=0; j<INS.numrigid; j++) 
-        fscanf(input,"%f", &(INS.rigidneeds[i][j]));
-      for (j=0; j<INS.numfluid; j++) 
-        fscanf(input,"%f", &(INS.fluidneeds[i][j]));
+    flex_prob->slas = 
+        (float *)calloc(flex_prob->num_services, sizeof(float));
+    flex_prob->rigid_needs = 
+        (float **)calloc(flex_prob->num_services, sizeof(float*));
+    flex_prob->fluid_needs = 
+        (float **)calloc(flex_prob->num_services, sizeof(float*));
+    for (i=0; i<flex_prob->num_services; i++) {
+      flex_prob->rigid_needs[i] = 
+          (float *)calloc(flex_prob->num_rigid, sizeof(float));
+      flex_prob->fluid_needs[i] = 
+          (float *)calloc(flex_prob->num_fluid,sizeof(float));
     }
 
-    // Allocated memory for global_server_loads
-    global_server_rigid_loads =	 	(float **)calloc(INS.numservers,sizeof(float*));
-    global_server_fluid_loads = 	(float **)calloc(INS.numservers,sizeof(float*));
-    global_server_fluidmin_loads = 	(float **)calloc(INS.numservers,sizeof(float*));
-    for (i=0; i < INS.numservers; i++) {
-      global_server_rigid_loads[i] = (float *)calloc(INS.numrigid,sizeof(float));
-      global_server_fluid_loads[i] = (float *)calloc(INS.numfluid,sizeof(float));
-      global_server_fluidmin_loads[i] = (float *)calloc(INS.numfluid,sizeof(float));
+    for (i = 0; i < flex_prob->num_servers; i++) {
+        for (j=0; j < flex_prob->num_rigid; j++)
+            fscanf(input,"%f", &(flex_prob->rigid_capacities[i][j]));
+        for (j=0; j < flex_prob->num_fluid; j++)
+            fscanf(input,"%f", &(flex_prob->fluid_capacities[i][j]));
+    }
+    for (i = 0; i < flex_prob->num_services; i++) {
+      fscanf(input,"%f", &(flex_prob->slas[i]));
+      for (j=0; j<flex_prob->num_rigid; j++) 
+        fscanf(input,"%f", &(flex_prob->rigid_needs[i][j]));
+      for (j=0; j<flex_prob->num_fluid; j++) 
+        fscanf(input,"%f", &(flex_prob->fluid_needs[i][j]));
     }
 
-    int status;
+    flex_prob->lpbound = compute_LP_bound();
 
     for (schedulerptr = schedulers; *schedulerptr; schedulerptr++) {
 
-      INS.misc_output[0] = '\0';
+        // if not needed, then skip
+        if (!strcmp(*schedulerptr,"not_needed")) continue;
 
-      // if not needed, then skip
-      if (!strcmp(*schedulerptr,"not_needed"))  {
-        continue;
-      }
-
-      // initialize mapping and allocations
-      for (i=0; i < INS.numservices; i++) {
-        INS.mapping[i] = -1;
-        INS.allocation[i] = 0.0;
-      }
-
-      // search for the scheduler in the list
-      sched = 0;
-      while (implemented_schedulers[sched].name &&
-         strcmp(*schedulerptr, implemented_schedulers[sched].name)) {
-        sched++; 
-      }
+        // search for the scheduler in the list
+        for (i = 0; implemented_schedulers[i].name && 
+            strcmp(*schedulerptr, implemented_schedulers[i].name); i++);
  
-      // if we didn't find it, exit
-      if (!implemented_schedulers[sched].name) {
-        fprintf(stderr,
-          "Error: no scheduler called \"%s\".\n", *schedulerptr);
-	exit(1);
-      }
-
-      // Initialize the server loads 
-      initialize_global_server_loads();
-
-      // if we did find it, then run it
-      gettimeofday(&time1, NULL);
-
-      // Call the scheduler
-      status = implemented_schedulers[sched].func(
-                 implemented_schedulers[sched].arg1,
-                 implemented_schedulers[sched].arg2,
-                 implemented_schedulers[sched].arg3);
-
-      gettimeofday(&time2, NULL);
-
-      if ((status == RESOURCE_ALLOCATION_SUCCESS) && 
-          (strcmp(*schedulerptr,"LPBOUND"))) {
-
-        // Sanity check the allocation
-        if (sanity_check() == RESOURCE_ALLOCATION_FAILURE) {
-          fprintf(stderr,"Invalid allocation\n");
-          exit(1);
+        // if we didn't find it, exit
+        if (!implemented_schedulers[i].name) {
+            fprintf(stderr, "Error: no scheduler called \"%s\".\n", 
+                *schedulerptr);
+	        exit(1);
         }
 
-        // maximize_average_yield()
-        non_optimized_average_yield = compute_average_yield();
-        non_optimized_utilization = compute_utilization();
-        maximize_average_yield();
+        // if we did find it, then run it
+        gettimeofday(&time1, NULL);
 
-        // Re-Sanity check the allocation
-        if (sanity_check() == RESOURCE_ALLOCATION_FAILURE) {
-          fprintf(stderr,"Invalid allocation\n");
-          exit(1);
+        // Call the scheduler
+        flex_soln = implemented_schedulers[i].func(
+            implemented_schedulers[i].arg1, implemented_schedulers[i].arg2, 
+            implemented_schedulers[i].arg3);
+
+        gettimeofday(&time2, NULL);
+
+        if (flex_soln->success && strcmp(*schedulerptr,"LPBOUND")) {
+
+            // Sanity check the allocation
+            if (sanity_check()) {
+                fprintf(stderr,"Invalid allocation\n");
+                exit(1);
+            }
+
+            // maximize_average_yield()
+            non_optimized_average_yield = compute_average_yield(flex_soln);
+            non_optimized_utilization = compute_utilization(flex_soln);
+            maximize_average_yield(flex_soln);
+
+            // Re-Sanity check the allocation
+            if (sanity_check()) {
+                fprintf(stderr,"Invalid allocation\n");
+                exit(1);
+            }
+
         }
-      }
 
-      // Compute elapsed time
-      elasped_seconds  = (double)(time2.tv_sec - time1.tv_sec);
-      elasped_seconds += (double)(time2.tv_usec - time1.tv_usec) / 1000000.0;
+        // Compute elapsed time
+        elasped_seconds  = (double)(time2.tv_sec - time1.tv_sec);
+        elasped_seconds += (double)(time2.tv_usec - time1.tv_usec) / 1000000.0;
   
-      // Print output
-      fprintf(output,"%s|",*schedulerptr);
-      if (status == RESOURCE_ALLOCATION_FAILURE) {
-        fprintf(output,"%.3f|",-1.0);
-        fprintf(output,"%.3f|",-1.0);
-        fprintf(output,"%.3f|",-1.0);
-        fprintf(output,"%.3f|",-1.0);
-        fprintf(output,"%.3f|",-1.0);
-      } else if (!strcmp(*schedulerptr,"LPBOUND")) {
-        fprintf(output,"%.3f|",INS.lpbound);
-        fprintf(output,"%.3f|",-1.0);
-        fprintf(output,"%.3f|",-1.0);
-        fprintf(output,"%.3f|",-1.0);
-        fprintf(output,"%.3f|",-1.0);
-      } else {
-        fprintf(output,"%.3f|",compute_minimum_yield());
-        fprintf(output,"%.3f|",non_optimized_average_yield);
-        fprintf(output,"%.3f|",compute_average_yield());
-        fprintf(output,"%.3f|",non_optimized_utilization);
-        fprintf(output,"%.3f|",compute_utilization());
-      }
-      fprintf(output,"%.3f|",elasped_seconds);
-      fprintf(output,"%s\n",INS.misc_output);
+        // Print output
+        fprintf(output, "%s|", *schedulerptr);
+        if (!strcmp(*schedulerptr,"LPBOUND")) {
+            fprintf(output, "%.3f|", flex_prob->lpbound);
+            fprintf(output, "%.3f|", -1.0);
+            fprintf(output, "%.3f|", -1.0);
+            fprintf(output, "%.3f|", -1.0);
+            fprintf(output, "%.3f|", -1.0);
+        } else if (flex_soln->success) {
+            fprintf(output, "%.3f|", compute_minimum_yield(flex_soln));
+            fprintf(output, "%.3f|", non_optimized_average_yield);
+            fprintf(output, "%.3f|", compute_average_yield(flex_soln));
+            fprintf(output, "%.3f|", non_optimized_utilization);
+            fprintf(output, "%.3f|", compute_utilization(flex_soln));
+        } else {
+            fprintf(output, "%.3f|", -1.0);
+            fprintf(output, "%.3f|", -1.0);
+            fprintf(output, "%.3f|", -1.0);
+            fprintf(output, "%.3f|", -1.0);
+            fprintf(output, "%.3f|", -1.0);
+
+        }
+        fprintf(output, "%.3f|", elasped_seconds);
+        fprintf(output, "%s\n", flex_soln->misc_output);
+        destroy_flexsched_solution(flex_soln);
     }
-#if 0
-    for (i = 0; i < INS.numservices; i++) {
-        printf("%d\t", INS.mapping[i]);
-    }
-    printf("\n");
-    for (i = 0; i < INS.numservices; i++) {
-        printf("%f\t", INS.allocation[i]);
-    }
-    printf("\n");
-#endif
-//    fprintf(output,"##################\n");
+
+    // FIXME: if we're going to bother deallocating these pointers, shouldn't we
+    // get rid of the problem as well?
 
     for (schedulerptr = schedulers; *schedulerptr; schedulerptr++) 
-      free(*schedulerptr);
+        free(*schedulerptr);
     free(schedulers);
     
     return 0;

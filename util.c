@@ -1,22 +1,41 @@
 #include "flexsched.h"
 
-void free_2D_int_array(int **a, int n)
-{
-   int i;
-   for (i=0; i<n; i++) free(a[i]);
-   free(a);
-
-   return;
-}
+/* This is a global variable that keeps track of server load
+*  *     and that is used to speed up a bunch of the naively implemented
+*  *        algorithms (especially greedy ones) */
+float **global_server_rigid_loads = NULL;
+float **global_server_fluid_loads = NULL;
+float **global_server_fluidmin_loads = NULL;
 
 void initialize_global_server_loads()
 {
     int i, j;
-    for (i=0; i < INS.numservers; i++) {
-        for (j=0; j < INS.numrigid; j++)  {
+
+    // Allocated memory for global_server_loads
+    if (!global_server_rigid_loads)
+        global_server_rigid_loads = 
+            (float **)calloc(flex_prob->num_servers, sizeof(float*));
+    if (!global_server_fluid_loads)
+        global_server_fluid_loads = 
+            (float **)calloc(flex_prob->num_servers, sizeof(float*));
+    if (!global_server_fluidmin_loads)
+        global_server_fluidmin_loads = 
+            (float **)calloc(flex_prob->num_servers, sizeof(float*));
+
+    for (i=0; i < flex_prob->num_servers; i++) {
+        if(!global_server_rigid_loads[i])
+            global_server_rigid_loads[i] = 
+                (float *)calloc(flex_prob->num_rigid, sizeof(float));
+        for (j=0; j < flex_prob->num_rigid; j++)  {
             global_server_rigid_loads[i][j] = 0.0;
         }
-        for (j=0; j < INS.numfluid; j++)  {
+        if(!global_server_fluid_loads[i])
+            global_server_fluid_loads[i] = 
+                (float *)calloc(flex_prob->num_fluid, sizeof(float));
+        if(!global_server_fluidmin_loads[i])
+            global_server_fluidmin_loads[i] = 
+                (float *)calloc(flex_prob->num_fluid, sizeof(float));
+        for (j=0; j < flex_prob->num_fluid; j++)  {
             global_server_fluid_loads[i][j] = 0.0;
             global_server_fluidmin_loads[i][j] = 0.0;
         }
@@ -25,34 +44,49 @@ void initialize_global_server_loads()
     return;
 }
 
+void add_service_load_to_server(int service, int server) {
+    int j;
+
+    for (j = 0; j < flex_prob->num_rigid; j++) {
+        global_server_rigid_loads[server][j] +=  
+            flex_prob->rigid_needs[service][j];
+    }   
+    for (j = 0; j < flex_prob->num_fluid; j++) {
+        global_server_fluid_loads[server][j] +=  
+            flex_prob->fluid_needs[service][j];
+        global_server_fluidmin_loads[server][j] +=
+            flex_prob->slas[service] * flex_prob->fluid_needs[service][j];
+    }   
+
+    return;
+}
+
 double compute_LP_bound()
 {
     int i, j;
 
-    float total_qos_minimum, total_scaled_needs, total_capacity;
-    float min_scaled_yield, scaled_yield;
+    float total_sla_need, total_non_sla_need, total_capacity;
+    float yield, minyield;
 
-    // Compute the bound directly
-    min_scaled_yield = -1.0;
-    for (j = 0; j < INS.numfluid; j++) {
+    minyield = 1.0 + EPSILON;
+    for (j = 0; j < flex_prob->num_fluid; j++) {
         total_capacity = 0.0;
-        for (i = 0; i < INS.numservers; i++) {
-            total_capacity += INS.fluidcapacities[i][j];
+        for (i = 0; i < flex_prob->num_servers; i++) {
+            total_capacity += flex_prob->fluid_capacities[i][j];
         }
-        total_qos_minimum = 0.0;
-        total_scaled_needs = 0.0;
-        for (i=0; i < INS.numservices; i++) {
-            total_qos_minimum += INS.slas[i] * INS.fluidneeds[i][j];
-            total_scaled_needs += (1-INS.slas[i]) * INS.fluidneeds[i][j];
+        total_sla_need = 0.0;
+        total_non_sla_need = 0.0;
+        for (i=0; i < flex_prob->num_services; i++) {
+            total_sla_need += flex_prob->slas[i] * flex_prob->fluid_needs[i][j];
+            total_non_sla_need += 
+                (1 - flex_prob->slas[i]) * flex_prob->fluid_needs[i][j];
         }
-        scaled_yield = (total_capacity - total_qos_minimum) / 
-            total_scaled_needs;
-        if ((min_scaled_yield == -1.0) || (scaled_yield < min_scaled_yield)) {
-            min_scaled_yield = scaled_yield;
-        }
+        yield = MIN((total_capacity - total_sla_need) / total_non_sla_need, 
+            1.0);
+        if (yield < minyield) minyield = yield;
     }
 
-    return MIN(1.0, min_scaled_yield);
+    return minyield;
 }
 
 /* array_sum(): Utility function */
@@ -100,25 +134,30 @@ int array_argmax(float *array, int size)
  * compute_sum_server_load:  (used for GREEDY)
  *  type: "fluid", "rigid", "fluidmin"
  */
-float compute_sum_server_load(int server, const char *type)
+// FIXME: strcmp!?
+float compute_sum_server_load(flexsched_solution flex_soln, int server, 
+    const char *type)
 {
     int i;
     float sumload = 0.0;
 
     if (!strcmp(type,"rigid")) {
-        for (i = 0; i < INS.numservices; i++) {
-            if (INS.mapping[i] != server) continue;
-            sumload += array_sum(INS.rigidneeds[i], INS.numrigid);
+        for (i = 0; i < flex_prob->num_services; i++) {
+            if (flex_soln->mapping[i] != server) continue;
+            sumload += 
+                array_sum(flex_prob->rigid_needs[i], flex_prob->num_rigid);
         }
     } else if (!strcmp(type,"fluid")) {
-        for (i = 0; i < INS.numservices; i++) {
-            if (INS.mapping[i] != server) continue;
-            sumload += array_sum(INS.fluidneeds[i], INS.numfluid);
+        for (i = 0; i < flex_prob->num_services; i++) {
+            if (flex_soln->mapping[i] != server) continue;
+            sumload += 
+                array_sum(flex_prob->fluid_needs[i], flex_prob->num_fluid);
         }
     } else if (!strcmp(type,"fluidmin")) {
-        for (i = 0; i < INS.numservices; i++) {
-            if (INS.mapping[i] != server) continue;
-            sumload += INS.slas[i] * array_sum(INS.fluidneeds[i], INS.numfluid);
+        for (i = 0; i < flex_prob->num_services; i++) {
+            if (flex_soln->mapping[i] != server) continue;
+            sumload += flex_prob->slas[i] * 
+                array_sum(flex_prob->fluid_needs[i], flex_prob->num_fluid);
         }
     } else {
         fprintf(stderr, "compute_sum_server_load(): unknown type '%s'\n",
@@ -132,14 +171,34 @@ float compute_sum_server_load(int server, const char *type)
  * compute_sum_server_load_fast:  (used for GREEDY)
  *  type: "fluid", "rigid", "fluidmin"
  */
+// FIXME: strcmp
 float compute_sum_server_load_fast(int server, const char *type)
 {
     if (!strcmp(type,"rigid")) {
-        return array_sum(global_server_rigid_loads[server], INS.numrigid);
+        if (!global_server_rigid_loads || !global_server_rigid_loads[server]) {
+            fprintf(stderr, 
+                "need to run global initializer before _fast'%s'\n", type);
+            exit(1);
+        }
+        return 
+            array_sum(global_server_rigid_loads[server], flex_prob->num_rigid);
     } else if (!strcmp(type,"fluid")) {
-        return array_sum(global_server_fluid_loads[server], INS.numfluid);
+        if (!global_server_fluid_loads || !global_server_fluid_loads[server]) {
+            fprintf(stderr, 
+                "need to run global initializer before _fast'%s'\n", type);
+            exit(1);
+        }
+        return 
+            array_sum(global_server_fluid_loads[server], flex_prob->num_fluid);
     } else if (!strcmp(type,"fluidmin")) {
-        return array_sum(global_server_fluidmin_loads[server], INS.numfluid);
+        if (!global_server_fluidmin_loads || 
+            !global_server_fluidmin_loads[server]) {
+            fprintf(stderr, 
+                "need to run global initializer before _fast'%s'\n", type);
+            exit(1);
+        }
+        return array_sum(global_server_fluidmin_loads[server], 
+            flex_prob->num_fluid);
     }
 
     fprintf(stderr,"compute_sum_server_load(): unknown type '%s'\n",type);
@@ -151,25 +210,26 @@ float compute_sum_server_load_fast(int server, const char *type)
  * compute_server_load_in_dimension:  (used for GREEDY)
  *  type: "fluid", "rigid", "fluidmin"
  */
-float compute_server_load_in_dimension(int server, const char *type, int dim)
+float compute_server_load_in_dimension(flexsched_solution flex_soln, int server,
+    const char *type, int dim)
 {
     int i;
     float load = 0.0;
 
     if (!strcmp(type,"rigid")) {
-        for (i=0; i<INS.numservices; i++) {
-            if (INS.mapping[i] != server) continue;
-            load += INS.rigidneeds[i][dim];
+        for (i=0; i<flex_prob->num_services; i++) {
+            if (flex_soln->mapping[i] != server) continue;
+            load += flex_prob->rigid_needs[i][dim];
         }
     } else if (!strcmp(type,"fluid")) {
-        for (i=0; i<INS.numservices; i++) {
-            if (INS.mapping[i] != server) continue;
-            load += INS.fluidneeds[i][dim];
+        for (i=0; i<flex_prob->num_services; i++) {
+            if (flex_soln->mapping[i] != server) continue;
+            load += flex_prob->fluid_needs[i][dim];
         }
     } else if (!strcmp(type,"fluidmin")) {
-        for (i=0; i<INS.numservices; i++) {
-            if (INS.mapping[i] != server) continue;
-            load += INS.slas[i] * INS.fluidneeds[i][dim];
+        for (i=0; i<flex_prob->num_services; i++) {
+            if (flex_soln->mapping[i] != server) continue;
+            load += flex_prob->slas[i] * flex_prob->fluid_needs[i][dim];
         }
     } else {
         fprintf(stderr, "compute_server_load_in_dimension: unknown type '%s'\n",
@@ -188,10 +248,26 @@ float compute_server_load_in_dimension_fast(int server, const char *type,
     int dim)
 {
     if (!strcmp(type,"rigid")) {
+        if (!global_server_rigid_loads || !global_server_rigid_loads[server]) {
+            fprintf(stderr, 
+                "need to run global initializer before _fast'%s'\n", type);
+            exit(1);
+        }
         return global_server_rigid_loads[server][dim];
     } else if (!strcmp(type,"fluid")) {
+        if (!global_server_fluid_loads || !global_server_fluid_loads[server]) {
+            fprintf(stderr, 
+                "need to run global initializer before _fast'%s'\n", type);
+            exit(1);
+        }
         return global_server_fluid_loads[server][dim];
     } else if (!strcmp(type,"fluidmin")) {
+        if (!global_server_fluidmin_loads || 
+            !global_server_fluidmin_loads[server]) {
+            fprintf(stderr, 
+                "need to run global initializer before _fast'%s'\n", type);
+            exit(1);
+        }
         return global_server_fluidmin_loads[server][dim];
     }
 
@@ -201,33 +277,28 @@ float compute_server_load_in_dimension_fast(int server, const char *type,
     return -1.0;
 }
 
-int service_can_fit_on_server(int service, int server)
+int service_can_fit_on_server(
+    flexsched_solution flex_soln, int service, int server)
 {
     int i, j;
     float load;
 
     // Rigid needs
-    for (j = 0; j < INS.numrigid; j++) {
-        load = 0.0;
-        for (i = 0; i < INS.numservices; i++) {
-            if (i == service || INS.mapping[i] != server) continue;
-            load += INS.rigidneeds[i][j];
-        }
+    for (j = 0; j < flex_prob->num_rigid; j++) {
+        load = compute_server_load_in_dimension(flex_soln, server, "rigid", j);
         // BEWARE OF THE EPSILON
-        if (INS.rigidcapacities[server][j] - load + EPSILON < 
-            INS.rigidneeds[service][j]) return 0;
+        if (flex_prob->rigid_capacities[server][j] - load + EPSILON < 
+            flex_prob->rigid_needs[service][j]) return 0;
     }
 
     // Fluid needs
-    for (j = 0; j < INS.numfluid; j++) {
-        load = 0.0;
-        for (i = 0; i < INS.numservices; i++) {
-            if (i == service || INS.mapping[i] != server) continue;
-            load += INS.slas[i] * INS.fluidneeds[i][j];
-        }
+    for (j = 0; j < flex_prob->num_fluid; j++) {
+        load = 
+            compute_server_load_in_dimension(flex_soln, server, "fluidmin", j);
         // BEWARE OF THE EPSILON
-        if (INS.fluidcapacities[server][j] - load + EPSILON < 
-            INS.slas[service] * INS.fluidneeds[service][j]) return 0;
+        if (flex_prob->fluid_capacities[server][j] - load + EPSILON < 
+            flex_prob->slas[service] * flex_prob->fluid_needs[service][j]) 
+            return 0;
     }
 
     return 1;
@@ -238,54 +309,169 @@ int service_can_fit_on_server_fast(int service, int server)
 {
     int j;
 
+    if (!global_server_rigid_loads || !global_server_rigid_loads[server] ||
+        !global_server_fluidmin_loads || 
+        !global_server_fluidmin_loads[server]) {
+        fprintf(stderr, 
+            "need to run global initializer before _fast\n");
+        exit(1);
+    }
+
     // Rigid needs
-    for (j = 0; j < INS.numrigid; j++) {
+    for (j = 0; j < flex_prob->num_rigid; j++) {
         // BEWARE OF THE EPSILON
-        if (INS.rigidcapacities[server][j] - 
+        if (flex_prob->rigid_capacities[server][j] - 
             global_server_rigid_loads[server][j] + EPSILON < 
-            INS.rigidneeds[service][j]) return 0;
+            flex_prob->rigid_needs[service][j]) return 0;
     }
 
     // Fluid needs
-    for (j = 0; j < INS.numfluid; j++) {
+    for (j = 0; j < flex_prob->num_fluid; j++) {
         // BEWARE OF THE EPSILON
-        if (INS.fluidcapacities[server][j] -
+        if (flex_prob->fluid_capacities[server][j] -
             global_server_fluidmin_loads[server][j] + EPSILON <
-            INS.slas[service] * INS.fluidneeds[service][j]) return 0;
+            flex_prob->slas[service] * flex_prob->fluid_needs[service][j]) 
+            return 0;
     }
 
     return 1;
 }
 
-/*
- Used for GREEDY algorithms
- Right now, gives every services on the same server
- the same yield, which is the highest feasible such yield.
-*/
-void compute_allocations_given_mapping(int server)
+void maximize_minimum_yield_on_server(flexsched_solution flex_soln, int server)
 {
     int i, j;
-    float yield, yield_min;
-    float sum1 = 0.0, sum2 = 0.0;
+    float total_sla_need, total_non_sla_need, available_resource;
+    float yield, minyield;
 
-    yield_min = -1.0;
-    for (j = 0; j < INS.numfluid; j++) {
-        for (i = 0; i < INS.numservices; i++) {
-            if (INS.mapping[i] != server) continue;
-            sum1 += INS.slas[i] * INS.fluidneeds[i][j];
-            sum2 += (1.0 - INS.slas[i]) * INS.fluidneeds[i][j];
-        }
-        yield = MIN(1.0, (INS.fluidcapacities[server][j] - sum1) / sum2);
-        if ((yield_min == -1.0) || (yield < yield_min)) yield_min = yield;
+    minyield = 1.0 + EPSILON;
+    for (j = 0; j < flex_prob->num_fluid; j++) {
+        total_sla_need = compute_server_load_in_dimension(flex_soln, server,
+            "fluidmin", j);
+        total_non_sla_need = compute_server_load_in_dimension(flex_soln, server,
+            "fluid", j) - total_sla_need;
+        available_resource = 
+            flex_prob->fluid_capacities[server][j] - total_sla_need;
+        yield = MIN(available_resource / total_non_sla_need, 1.0);
+        if (yield < minyield) minyield = yield;
     }
 
-    for (i = 0; i < INS.numservices; i++) {
-        if (INS.mapping[i] != server) continue;
-        INS.allocation[i] = yield_min;
+    for (i = 0; i < flex_prob->num_services; i++) {
+        if (flex_soln->mapping[i] != server) continue;
+        flex_soln->scaled_yields[i] = minyield;
     }
 
     return;
 }
+
+/* compute_minimym_yield() */
+float compute_minimum_yield(flexsched_solution flex_soln)
+{
+    return array_min(flex_soln->scaled_yields, flex_prob->num_services);
+}
+
+void maximize_minimum_yield(flexsched_solution flex_soln)
+{
+    int i;
+    float minyield;
+
+    for (i = 0; i < flex_prob->num_servers; i++) {
+        maximize_minimum_yield_on_server(flex_soln, i);
+    }
+    minyield = compute_minimum_yield(flex_soln);
+    for (i = 0; i < flex_prob->num_services; i++) {
+        flex_soln->scaled_yields[i] = minyield;
+    }
+
+    return;
+}
+
+// FIXME: go over this from paper again and make sure you agree.
+void maximize_average_yield_on_server_given_minimum(
+    flexsched_solution flex_soln, int server, float minyield)
+{
+    int i, j;
+    float available_resources[flex_prob->num_fluid];
+
+    for (i = 0; i < flex_prob->num_services; i++) {
+        if (flex_soln->mapping[i] != server) continue;
+        flex_soln->scaled_yields[i] = minyield;
+    }
+
+    // FIXME: doesn't do anything yet...
+    /*
+    for (j = 0; j < flex_prob->num_fluid; j++) {
+        available_resources[j] = flex_prob->fluid_capacities[j] -
+            compute_load_on_server_in_dimension(flex_soln, server, "fluidmin", 
+                j);
+    */
+
+    return;
+}
+
+void maximize_minimum_then_average_yield(flexsched_solution flex_soln)
+{
+    int i;
+    float minyield;
+
+    for (i = 0; i < flex_prob->num_servers; i++) {
+        maximize_minimum_yield_on_server(flex_soln, i);
+    }
+    minyield = compute_minimum_yield(flex_soln);
+    for (i = 0; i < flex_prob->num_servers; i++) {
+        maximize_average_yield_on_server_given_minimum(flex_soln, i, minyield);
+    }
+
+    return;
+}
+
+float compute_average_yield(flexsched_solution flex_soln)
+{
+    int i;
+    float sumyield = 0.0;
+    for (i = 0; i < flex_prob->num_services; i++) {
+        sumyield += flex_soln->scaled_yields[i];
+    }
+    return (sumyield / flex_prob->num_services);
+}
+
+float compute_server_sum_alloc(flexsched_solution flex_soln, 
+    int server)
+{
+    float alloc = 0.0;
+    int i, j;
+
+    for (i = 0; i < flex_prob->num_services; i++) {
+        if (flex_soln->mapping[i] != server) continue;
+
+        // rigid needs
+        for (j = 0; j < flex_prob->num_rigid; j++) 
+            alloc += flex_prob->rigid_needs[i][j];
+        
+        // fluid needs
+        for (j=0; j < flex_prob->num_fluid; j++) {
+            alloc += flex_prob->fluid_needs[i][j] * (flex_prob->slas[i] + 
+                flex_soln->scaled_yields[i] * (1.0 - flex_prob->slas[i]));
+        }
+    }
+    return alloc;
+}
+
+float compute_utilization(flexsched_solution flex_soln)
+{
+    int i;
+    float total_alloc = 0.0;
+    float total_capacity = 0.0;
+
+    for (i = 0; i < flex_prob->num_servers; i++) {
+        total_alloc += compute_server_sum_alloc(flex_soln, i);
+        total_capacity += 
+            array_sum(flex_prob->rigid_capacities[i], flex_prob->num_rigid) +
+            array_sum(flex_prob->fluid_capacities[i], flex_prob->num_fluid);
+    }
+
+    return (total_alloc / total_capacity);
+}
+
 
 /* increment_binary_counter()
  *   returns the sum of the bits
@@ -434,139 +620,6 @@ int find_maximum_subset(struct vp_instance *vp,
  return 0;
 }
 
-/* compute_minimym_yield() */
-float compute_minimum_yield()
-{
-    int i;
-    float min_yield = 1.0;
-    for (i = 0; i < INS.numservices; i++) {
-      if (INS.allocation[i] < min_yield)
-        min_yield = INS.allocation[i];
-    }
-    return min_yield;
-}
-
-float compute_average_yield()
-{
-    int i;
-    float ave_yield = 0.0;
-    for (i = 0; i < INS.numservices; i++) {
-      ave_yield += INS.allocation[i];
-    }
-    return (ave_yield / INS.numservices);
-}
-
-float compute_overall_server_load(int server)
-{
-  float load = 0.0;
-  int i,j;
-
-  for (i=0; i < INS.numservices; i++) {
-    if (INS.mapping[i] != server)
-      continue;
-    // rigid needs
-    for (j=0; j < INS.numrigid; j++) {
-      load += INS.rigidneeds[i][j];
-    }
-    // fluid needs
-    for (j=0; j < INS.numfluid; j++) {
-      load += INS.fluidneeds[i][j] * (INS.allocation[i] + INS.slas[i]*(1.0 - INS.allocation[i]));
-    }
-  }
-  return load;
-
-}
-
-float compute_utilization()
-{
-  float overall_load = 0.0;
-  float overall_capacity;
-  int i;
-
-  for (i=0; i < INS.numservers; i++) {
-    overall_load += compute_overall_server_load(i);
-  }
-
-  overall_capacity = INS.numservers * (INS.numrigid * 1.0 + INS.numfluid * 1.0);
-
-  return (overall_load / overall_capacity);
-}
-
-float compute_potential_yield_increase(int service, int server)
-{
-  float current_yield = INS.allocation[service];
-  float min_potential_yield_increase = -1.0;
-  int i, j;
-
-  for (j=0; j<INS.numfluid; j++) {
-    float free_resource = INS.fluidcapacities[server][j];
-    float potential_yield_increase;
-    float potential_new_yield;
-    // compute free resource
-    for (i=0; i<INS.numservices; i++) {
-      if (INS.mapping[i] != server)
-        continue;
-      free_resource -= INS.fluidneeds[i][j] *
-               (INS.allocation[i] + INS.slas[i]*(1.0 - INS.allocation[i]));
-    }
-    // compute potential new yield
-    potential_new_yield = MIN(1.0, (1 / (1 - INS.slas[service])) *
-            (INS.allocation[service] * (1 - INS.slas[service]) +
-                  free_resource / INS.fluidneeds[service][j]));
-    // compute potential yield increase
-    potential_yield_increase = potential_new_yield - INS.allocation[service];
-    if ((min_potential_yield_increase == -1.0) ||
-        (min_potential_yield_increase > potential_yield_increase)) {
-      min_potential_yield_increase = potential_yield_increase;
-    }
-  }
-
-  //fprintf(stderr,"Potential yield increase for service %d on server %d: %f\n",service,server,min_potential_yield_increase);
-  return min_potential_yield_increase;
-}
-
-void maximize_average_yield()
-{
-  int service, server;
-  float min_yield = compute_minimum_yield();
-
-  // set everybody's allocation to the minimum
-  for (service=0; service < INS.numservices; service++) {
-    INS.allocation[service] = min_yield;
-  }
-
-  // For each serer, increase yields
-  for (server=0; server < INS.numservers; server++) {
-    while(1) {
-      float max_increase;
-      int service_picked_for_increase;
-
-      // pick a service for increase
-      service_picked_for_increase = -1;
-      for (service=0; service < INS.numservices; service++) {
-        float increase;
-        if (INS.mapping[service] != server)
-          continue;
-        increase = compute_potential_yield_increase(service,server);
-        if ((service_picked_for_increase == -1) ||
-            (increase > max_increase)) {
-          service_picked_for_increase = service;
-          max_increase = increase;
-        }
-      }
-
-      // are we done?
-      if (max_increase < EPSILON)
-        break;
-
-      // do the increase
-      INS.allocation[service_picked_for_increase] += max_increase;
-    }
-  }
-
-  return;
-}
-
 float calc_stddev(int hosts, int tasks, int *taskhost, float *taskattr) {
     int i;
     float hostload[hosts];
@@ -587,111 +640,65 @@ float calc_stddev(int hosts, int tasks, int *taskhost, float *taskattr) {
     return stddev;
 }
 
-float find_min_memload(int hosts, int tasks, int *taskhost, float *taskmem) {
-    int i;
-    float memload[hosts];
-    float minload = 1.0;
-
-    for (i = 0; i < hosts; i++) {
-        memload[i] = 0.0;
-    }
-    for (i = 0; i < tasks; i++) {
-        memload[taskhost[i]] += taskmem[i];
-    }
-    for (i = 0; i < hosts; i++) {
-        if (memload[i] < minload) {
-            minload = memload[i];
-        }
-    }
-    return minload;
-}
-
-float find_max_memload(int hosts, int tasks, int *taskhost, float *taskmem) {
-    int i;
-    float memload[hosts];
-    float maxload = 0.0;
-
-    for (i = 0; i < hosts; i++) {
-        memload[i] = 0.0;
-    }
-    for (i = 0; i < tasks; i++) {
-        memload[taskhost[i]] += taskmem[i];
-    }
-    for (i = 0; i < hosts; i++) {
-        if (memload[i] > maxload) {
-            maxload = memload[i];
-        }
-    }
-    return maxload;
-}
-
 /* sanity_check() 
  *
  * Checks that resource capacities are not overcome and that
  * the mapping is valid
  */
-int sanity_check()
+int sanity_check(flexsched_solution flex_soln)
 {
-  int j, server, service;
-  int return_value = RESOURCE_ALLOCATION_SUCCESS;
+    int i, j, k;
+    int return_value = 0;
+    float alloc;
 
-  // check that each service is mapped to a serer
-  for (service=0; service < INS.numservices; service++) {
-    if ((INS.mapping[service] < 0) || (INS.mapping[service] > INS.numservers -1)) {
-      fprintf(stderr,"Error: Service %d is mapped to invalid server %d\n",
-                 service, INS.mapping[service]);
-      return_value = RESOURCE_ALLOCATION_FAILURE;
+    // check that each service is mapped to a server and yields are <= 1.0
+    for (i = 0; i < flex_prob->num_services; i++) {
+        if (flex_soln->mapping[i] < 0 || 
+            flex_soln->mapping[i] >= flex_prob->num_servers) {
+            fprintf(stderr, 
+                "Error: Service %d is mapped to invalid server %d\n", i, 
+                flex_soln->mapping[i]);
+            return_value = 1;
+        }
+        if (flex_soln->scaled_yields[i] > 1.0) {
+            fprintf(stderr, "Error: Allocation of service %d is > 1.0 (%.2f)\n",
+                i, flex_soln->scaled_yields[i]);
+            return_value = 1;
+        }
     }
-  }
 
-  // check that server capacities are respected
-  for (server=0; server < INS.numservers; server++) {
-    // checking rigid needs
-    for (j=0; j < INS.numrigid; j++) {
-      float load=0.0;
-      for (service=0; service < INS.numservices; service++) {
-        if (INS.mapping[service] != server)
-          continue;
-        load += INS.rigidneeds[service][j];
-      }
-      if (load > INS.rigidcapacities[server][j] + EPSILON) {
-        fprintf(stderr,
-          "Error: Rigid Capacity %d of server %d exceeded (%f/%f)\n", j, server,
-          load, INS.rigidcapacities[server][j]);
-        return_value = RESOURCE_ALLOCATION_FAILURE;
-      } else {
-    //    fprintf(stderr,"Rigid load #%d = %f\n",j,load);
-      }
+    // check that server capacities are respected
+    for (j = 0; j < flex_prob->num_servers; j++) {
+        // checking rigid needs
+        for (k = 0; k < flex_prob->num_rigid; k++) {
+            alloc = compute_server_load_in_dimension(flex_soln, j, "rigid", k);
+            if(flex_prob->rigid_capacities[j][k] + EPSILON < alloc) {
+                fprintf(stderr,
+                    "Error: Rigid Capacity %d of server %d exceeded (%f/%f)\n", 
+                    k, j, alloc, flex_prob->rigid_capacities[j][k]);
+                return_value = 1;
+            }
+        }
+
+        // checking fluid needs
+        // FIXME: I really don't like how this is done inconsistently
+        // FIXME: get a compute_sum_alloc_in_dimension?
+        for (k = 0; k < flex_prob->num_fluid; k++) {
+            alloc = 0.0;
+            for (i = 0; i < flex_prob->num_services; i++) {
+                if (flex_soln->mapping[i] != j) continue;
+                alloc += flex_prob->fluid_needs[i][k] * (flex_prob->slas[i] + 
+                    flex_soln->scaled_yields[i] * (1.0 - flex_prob->slas[i]));
+            }
+            if (flex_prob->fluid_capacities[j][k] + EPSILON < alloc) {
+                fprintf(stderr,
+                    "Error: Fluid Capacity %d of server %d exceeded (%f/%f)\n",
+                    k, j, alloc, flex_prob->fluid_capacities[j][k]);
+                return_value = 1;
+            }
+        }
     }
-    // checking fluid needs
-    for (j=0; j < INS.numfluid; j++) {
-      float load=0.0;
-      for (service=0; service < INS.numservices; service++) {
-        if (INS.mapping[service] != server)
-          continue;
-        load += INS.fluidneeds[service][j] * (INS.allocation[service] +
-          INS.slas[service]*(1 - INS.allocation[service]));
-      }
-      if (load > INS.fluidcapacities[server][j] + EPSILON) {
-        fprintf(stderr,
-          "Error: Fluid Capacity %d of server %d exceeded (%f/%f)\n",
-          j, server, load, INS.fluidcapacities[server][j]);
-        return_value = RESOURCE_ALLOCATION_FAILURE;
-      } else {
-     //   fprintf(stderr,"Fluid load #%d = %f\n",j,load);
-      }
-    }
-  }
-  // Check that all allocations are <= 1.0
-  for (service=0; service < INS.numservices; service++) {
-    if (INS.allocation[service] > 1.0) {
-      fprintf(stderr,"Error: Allocation of service %d is > 1.0 (%.2f)\n",
-                        service, INS.allocation[service]);
-      return_value = RESOURCE_ALLOCATION_FAILURE;
-    }
-  }
-  return return_value;
+
+    return return_value;
+
 }
-
-
-

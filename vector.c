@@ -1,5 +1,8 @@
 #include "flexsched.h"
 
+/* Global for some VP stuff acceleration*/ 
+float **global_vp_bin_loads; 
+
 /* generate_vp_instance() */
 struct vp_instance *generate_vp_instance(float yield) 
 {

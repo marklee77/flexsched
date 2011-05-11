@@ -9,15 +9,17 @@ int GREEDY_compare_S1(const void *x, const void *y)
 /* Sorting the services by decreasing of max fluid needs */
 int GREEDY_compare_S2(const void *x, const void *y)
 {
-    return CMP(array_max(INS.fluidneeds[(int *)x], INS.numfluid),
-        array_max(INS.fluidneeds[(int *)y], INS.numfluid));
+    return CMP(
+        array_max(flex_prob->fluid_needs[*(int *)x], flex_prob->num_fluid),
+        array_max(flex_prob->fluid_needs[*(int *)y], flex_prob->num_fluid));
 }
 
 /* Sorting the services by decreasing sum of fluid needs */
 int GREEDY_compare_S3(const void *x, const void *y)
 {
-    return CMP(array_sum(INS.fluidneeds[(int *)x], INS.numfluid),
-        array_sum(INS.fluidneeds[(int *)y], INS.numfluid));
+    return CMP(
+        array_sum(flex_prob->fluid_needs[*(int *)x], flex_prob->num_fluid),
+        array_sum(flex_prob->fluid_needs[*(int *)y], flex_prob->num_fluid));
 }
 
 /* Sorting the services by decreasing max of rigid and constrained fluid need */
@@ -26,12 +28,14 @@ int GREEDY_compare_S4(const void *x, const void *y)
     int ix = *((int *)x);
     int iy = *((int *)y);
 
-    float max_rigid_x = array_max(INS.rigidneeds[ix], INS.numrigid);
-    float max_rigid_y = array_max(INS.rigidneeds[iy],INS.numrigid);
-    float max_constrainedfluid_x = 
-        INS.slas[ix] * array_max(INS.fluidneeds[ix], INS.numfluid);
-    float max_constrainedfluid_y = 
-        INS.slas[iy] * array_max(INS.fluidneeds[iy], INS.numfluid);
+    float max_rigid_x = 
+        array_max(flex_prob->rigid_needs[ix], flex_prob->num_rigid);
+    float max_rigid_y = 
+        array_max(flex_prob->rigid_needs[iy],flex_prob->num_rigid);
+    float max_constrainedfluid_x = flex_prob->slas[ix] * 
+        array_max(flex_prob->fluid_needs[ix], flex_prob->num_fluid);
+    float max_constrainedfluid_y = flex_prob->slas[iy] * 
+        array_max(flex_prob->fluid_needs[iy], flex_prob->num_fluid);
 
     return CMP(MAX(max_rigid_x, max_constrainedfluid_x), 
         MAX(max_rigid_y, max_constrainedfluid_y));
@@ -43,12 +47,14 @@ int GREEDY_compare_S5(const void *x, const void *y)
     int ix = *((int *)x);
     int iy = *((int *)y);
 
-    float sum_rigid_x = array_sum(INS.rigidneeds[ix], INS.numrigid);
-    float sum_rigid_y = array_sum(INS.rigidneeds[iy], INS.numrigid);
-    float sum_constrainedfluid_x = 
-        INS.slas[ix] * array_sum(INS.fluidneeds[ix], INS.numfluid);
-    float sum_constrainedfluid_y = 
-        INS.slas[iy] * array_sum(INS.fluidneeds[iy], INS.numfluid);
+    float sum_rigid_x = 
+        array_sum(flex_prob->rigid_needs[ix], flex_prob->num_rigid);
+    float sum_rigid_y = 
+        array_sum(flex_prob->rigid_needs[iy], flex_prob->num_rigid);
+    float sum_constrainedfluid_x = flex_prob->slas[ix] * 
+        array_sum(flex_prob->fluid_needs[ix], flex_prob->num_fluid);
+    float sum_constrainedfluid_y = flex_prob->slas[iy] * 
+        array_sum(flex_prob->fluid_needs[iy], flex_prob->num_fluid);
 
     return CMP(sum_rigid_x + sum_constrainedfluid_x, 
         sum_rigid_y + sum_constrainedfluid_y);
@@ -60,10 +66,14 @@ int GREEDY_compare_S6(const void *x, const void *y)
     int ix = *((int *)x);
     int iy = *((int *)y);
 
-    float max_rigid_x = array_max(INS.rigidneeds[ix], INS.numrigid);
-    float max_rigid_y = array_max(INS.rigidneeds[iy], INS.numrigid);
-    float max_fluid_x = array_max(INS.fluidneeds[ix], INS.numfluid);
-    float max_fluid_y = array_max(INS.fluidneeds[iy], INS.numfluid);
+    float max_rigid_x = 
+        array_max(flex_prob->rigid_needs[ix], flex_prob->num_rigid);
+    float max_rigid_y = 
+        array_max(flex_prob->rigid_needs[iy], flex_prob->num_rigid);
+    float max_fluid_x = 
+        array_max(flex_prob->fluid_needs[ix], flex_prob->num_fluid);
+    float max_fluid_y = 
+        array_max(flex_prob->fluid_needs[iy], flex_prob->num_fluid);
 
     return CMP(MAX(max_rigid_x, max_fluid_x), MAX(max_rigid_y, max_fluid_y));
 }
@@ -74,15 +84,15 @@ int GREEDY_compare_S7(const void *x, const void *y)
     int ix = *((int *)x);
     int iy = *((int *)y);
 
-    float sum_x = array_sum(INS.rigidneeds[ix], INS.numrigid) + 
-        array_sum(INS.fluidneeds[ix],INS.numfluid);
-    float sum_y = array_sum(INS.rigidneeds[iy],INS.numrigid) +
-        array_sum(INS.fluidneeds[iy],INS.numfluid);
+    float sum_x = array_sum(flex_prob->rigid_needs[ix], flex_prob->num_rigid) + 
+        array_sum(flex_prob->fluid_needs[ix],flex_prob->num_fluid);
+    float sum_y = array_sum(flex_prob->rigid_needs[iy],flex_prob->num_rigid) +
+        array_sum(flex_prob->fluid_needs[iy],flex_prob->num_fluid);
 
     return CMP(sum_x, sum_y);
 }
 
-void GREEDY_sort_services(const char *S, int *sorted)
+void GREEDY_sort_services(const char *S, int *sortmap)
 {
     int i;
     int (*compar)(const void *, const void *);
@@ -108,10 +118,10 @@ void GREEDY_sort_services(const char *S, int *sorted)
     }
 
     // Initialize index array with the original order
-    for (i = 0; i < INS.numservices; i++) sorted[i]=i;
+    for (i = 0; i < flex_prob->num_services; i++) sortmap[i] = i;
 
     // Sort the jobs
-    qsort(sorted, INS.numservices, sizeof(int), compar);
+    qsort(sortmap, flex_prob->num_services, sizeof(int), compar);
 
     return;
 }
@@ -125,10 +135,10 @@ int GREEDY_pick_server_P1(int service)
   
     minload = -1.0;
     picked = -1;
-    for (i=0; i < INS.numservers; i++) {
+    for (i=0; i < flex_prob->num_servers; i++) {
         if (!service_can_fit_on_server_fast(service, i)) continue;
-        load = compute_server_load_in_dimension_fast(i, "fluid", 
-            array_argmax(INS.fluidneeds[service], INS.numfluid));
+        load = compute_server_load_in_dimension_fast(i, "fluid", array_argmax(
+            flex_prob->fluid_needs[service], flex_prob->num_fluid));
         if ((minload == -1.0) || (load < minload)) {
             minload = load;
             picked = i; 
@@ -147,7 +157,7 @@ int GREEDY_pick_server_P2(int service)
   
     minload = -1.0;
     picked = -1;
-    for (i = 0; i < INS.numservers; i++) {
+    for (i = 0; i < flex_prob->num_servers; i++) {
         if (!service_can_fit_on_server_fast(service,i)) continue;
         load = compute_sum_server_load_fast(i, "fluid");
         if ((minload == -1.0) || (load < minload)) {
@@ -166,17 +176,19 @@ int GREEDY_pick_server_P3_P5(int service, const char *mode)
     float load;
 
     picked = -1;
-    for (i = 0; i < INS.numservers; i++) {
+    for (i = 0; i < flex_prob->num_servers; i++) {
         if (!service_can_fit_on_server_fast(service, i)) continue;
 
-        if (array_max(INS.rigidneeds[service], INS.numrigid) > 
-            INS.slas[service] * array_max(INS.fluidneeds[service], 
-            INS.numfluid)) {
+        if (array_max(flex_prob->rigid_needs[service], flex_prob->num_rigid) > 
+            flex_prob->slas[service] * 
+            array_max(flex_prob->fluid_needs[service], flex_prob->num_fluid)) {
             load = compute_server_load_in_dimension_fast(i, "rigid", 
-                array_argmax(INS.rigidneeds[service],INS.numrigid));
+                array_argmax(flex_prob->rigid_needs[service], 
+                    flex_prob->num_rigid));
         } else {
             load = compute_server_load_in_dimension_fast(i, "fluidmin", 
-                array_argmax(INS.fluidneeds[service],INS.numfluid));
+                array_argmax(flex_prob->fluid_needs[service],
+                    flex_prob->num_fluid));
         }
 
         if (!strcmp(mode, "bestfit")) {
@@ -213,7 +225,7 @@ int GREEDY_pick_server_P4_P6(int service, const char *mode)
 
     picked = -1;
 
-    for (i=0; i < INS.numservers; i++) {
+    for (i=0; i < flex_prob->num_servers; i++) {
 
         if (!service_can_fit_on_server_fast(service,i)) continue;
 
@@ -252,7 +264,7 @@ int GREEDY_pick_server_P7(int service)
 
     picked = -1;
 
-    for (i = 0; i < INS.numservers; i++) {
+    for (i = 0; i < flex_prob->num_servers; i++) {
         if (!service_can_fit_on_server_fast(service, i)) continue;
         picked = i;
         break;
@@ -284,181 +296,145 @@ int GREEDY_pick_server(const char *P, int service)
     return -1;
 }
 
-int GREEDY_compute_mapping(const char *P, int *sorted)
+void GREEDY_compute_mapping(const char *P, int *sortmap, 
+        flexsched_solution flex_soln)
 {
     int i, j; 
     int service, server;
 
 
-    /* Initialize the server load (for speed of computation) */
-    // FIXME: do we really need to call this now? 
+    for (i = 0; i < flex_prob->num_services; i++) {
+        service = sortmap[i];
+        server = GREEDY_pick_server(P, service);
+
+        if (-1 == server) return;
+        
+        flex_soln->mapping[service] = server;
+
+        // only needed if we're using _fast
+        add_service_load_to_server(service, server);
+
+    }
+
+    flex_soln->success = 1;
+    return;
+
+}
+
+flexsched_solution GREEDY_scheduler(char *S, char *P, char *ignore)
+{
+    int sortmap[flex_prob->num_services];
+    char scheduler_name[20];
+    sprintf(scheduler_name, "GREEDY_%s_%s", S, P);
+    flexsched_solution flex_soln = new_flexsched_solution(scheduler_name);
+
+    // needed for _fast
     initialize_global_server_loads();
 
-    for (i = 0; i < INS.numservices; i++) {
-        service = sorted[i];
-        server = GREEDY_pick_server(P, service)
-
-        if (-1 == server) return RESOURCE_ALLOCATION_FAILURE;
-
-        /* Update the server loads */
-        for (j = 0; j < INS.numrigid; j++) {
-            global_server_rigid_loads[server][j] += INS.rigidneeds[service][j];
-        }
-        for (j = 0; j < INS.numfluid; j++) {
-            global_server_fluid_loads[server][j] += INS.fluidneeds[service][j];
-            global_server_fluidmin_loads[server][j] +=
-                INS.slas[service] * INS.fluidneeds[service][j];
-        }
-    }
-
-    return RESOURCE_ALLOCATION_SUCCESS;
-}
-
-int GREEDY_scheduler(char *S, char *P, char *ignore)
-{
-    int i;
-    int sorted[INS.numservices];
-
     // Sort the services appropriately
-    GREEDY_sort_services(S,sorted);
+    GREEDY_sort_services(S, sortmap);
 
     // Map each service to a particular host
-    if (GREEDY_compute_mapping(P,sorted) == RESOURCE_ALLOCATION_FAILURE) {
-        return RESOURCE_ALLOCATION_FAILURE; 
+    GREEDY_compute_mapping(P, sortmap, flex_soln);
+
+    if (flex_soln->success) {
+        maximize_minimum_scaled_yields(flex_soln);
     }
-
-    // For each host, compute its services' allocations
-    for (i = 0; i < INS.numservers; i++) {
-        compute_allocations_given_mapping(i);
-    } 
-
-    return RESOURCE_ALLOCATION_SUCCESS;
+    return flex_soln;
 }
 
-int METAGREEDY_scheduler(char *S, char *P, char *ignore)
+flexsched_solution METAGREEDY_scheduler(
+    char *ignore1, char *ignore2, char *ignore3)
 {
+    flexsched_solution flex_soln = new_flexsched_solution("METAGREEDY");
+
     char *sorting[] = {"S1","S2","S3","S4","S5","S6","S7",NULL};
     char *picking[] = {"P1","P2","P3","P4","P5","P6","P7",NULL};
     int i, is, ip;
-    int status;
-    int metastatus = RESOURCE_ALLOCATION_FAILURE;
-    float minyield, maxminyield = -1;
-    float aveyield, maxaveyield = -1;
-    int *mapping = NULL;
-    float *allocation = NULL;
 
-    for (is=0; sorting[is]; is++) {
-        for (ip=0; picking[ip]; ip++) {
-            // initialize mappings and allocation
-            for (i=0; i < INS.numservices; i++) {
-                INS.mapping[i] = -1;
-                INS.allocation[i] = 0.0;
-            }
+    flexsched_solution curr_soln = NULL;
+    float minyield, maxminyield = -1;
+    float avgyield, maxavgyield = -1;
+
+    for (is = 0; sorting[is]; is++) {
+        for (ip = 0; picking[ip]; ip++) {
 
             // call the GREEDY scheduler
-            status = GREEDY_scheduler(sorting[is], picking[ip], NULL);
+            curr_soln = GREEDY_scheduler(sorting[is], picking[ip], NULL);
 
             // If worked and improved, then great
-            if (status == RESOURCE_ALLOCATION_SUCCESS) {
-                metastatus = RESOURCE_ALLOCATION_SUCCESS;
+            if (curr_soln->success) {
+                flex_soln->success;
 
                 // compute minimum yield
-                minyield = compute_minimum_yield();
+                minyield = compute_minimum_yield(curr_soln);
 
                 // optimize and compute maximum yield
-                maximize_average_yield();
-                aveyield = compute_average_yield();
+                maximize_average_yield(curr_soln);
+                avgyield = compute_average_yield(curr_soln);
 
-                if ((maxminyield == -1) || (minyield > maxminyield) || 
-                    ((minyield > maxminyield - EPSILON) && 
-                    (aveyield > maxaveyield))) {
+                if (minyield > maxminyield || (minyield > maxminyield - EPSILON
+                    && avgyield > maxavgyield)) {
                     maxminyield = minyield;
-                    maxaveyield = aveyield;
-                    // allocate memory
-                    if (mapping == NULL) {
-                        mapping = (int *)calloc(INS.numservices, sizeof(int));
-                        allocation = 
-                            (float *)calloc(INS.numservices, sizeof(float));
-                    }
+                    maxavgyield = avgyield;
                     // save the returned answer
-                    for (i=0; i < INS.numservices; i++) {
-                        mapping[i] = INS.mapping[i];
-                        allocation[i] = INS.allocation[i];
+                    for (i=0; i < flex_prob->num_services; i++) {
+                        flex_soln->mapping[i] = curr_soln->mapping[i];
+                        flex_soln->scaled_yields[i] = 
+                            flex_soln->scaled_yields[i];
                     }
                 }
             }
+
+            free_flexsched_solution(curr_soln);
         }
     }
 
-    if (metastatus == RESOURCE_ALLOCATION_SUCCESS) {
-        for (i=0; i < INS.numservices; i++) {
-            INS.mapping[i] = mapping[i];
-            INS.allocation[i] = allocation[i];
-        }
-    }
-
-    free(mapping);
-    free(allocation);
-
-    return metastatus;
+    return flex_soln;
 }
 
-int METAGREEDYLIGHT_scheduler(char *S, char *P, char *ignore)
+flexsched_solution METAGREEDYLIGHT_scheduler(char *S, char *P, char *ignore)
 {
-  char *sorting[] = {"S3","S2","S5","S7","S6","S2","S3","S6","S5",NULL};
-  char *picking[] = {"P1","P1","P1","P1","P1","P2","P2","P2","P4",NULL};
-  int i, isp;
-  int status;
-  int metastatus = RESOURCE_ALLOCATION_FAILURE;
-  float minyield, maxminyield = -1;
-  float aveyield, maxaveyield = -1;
-  int *mapping = NULL;
-  float *allocation = NULL;
+    flexsched_solution flex_soln = new_flexsched_solution("METAGREEDYLIGHT");
 
-  for (isp=0; sorting[isp]; isp++) {
-    // initialize mappings and allocation
-    for (i=0; i < INS.numservices; i++) {
-      INS.mapping[i] = -1;
-      INS.allocation[i] = 0.0;
+    char *sorting[] = {"S3","S2","S5","S7","S6","S2","S3","S6","S5",NULL};
+    char *picking[] = {"P1","P1","P1","P1","P1","P2","P2","P2","P4",NULL};
+    int i, isp;
+
+    flexsched_solution curr_soln = NULL;
+    float minyield, maxminyield = -1;
+    float avgyield, maxavgyield = -1;
+
+    for (isp = 0; sorting[isp] && picking[isp]; isp++) {
+
+        // call the GREEDY scheduler
+        curr_soln = GREEDY_scheduler(sorting[isp], picking[isp], NULL);
+
+        // If worked and improved, then great
+        if (curr_soln->success) {
+            flex_soln->success;
+
+            // compute minimum yield
+            minyield = compute_minimum_yield(curr_soln);
+
+            // optimize and compute maximum yield
+            maximize_average_yield(curr_soln);
+            avgyield = compute_average_yield(curr_soln);
+
+            if (minyield > maxminyield || 
+                (minyield > maxminyield - EPSILON && avgyield > maxavgyield)) {
+                maxminyield = minyield;
+                maxavgyield = avgyield;
+                // save the returned answer
+                for (i=0; i < flex_prob->num_services; i++) {
+                    flex_soln->mapping[i] = curr_soln->mapping[i];
+                    flex_soln->scaled_yields[i] = flex_soln->scaled_yields[i];
+                }
+            }
+        }
+
+        free_flexsched_solution(curr_soln);
     }
-    // call the GREEDY scheduler
-    status = GREEDY_scheduler(sorting[isp], picking[isp], NULL);
-    // If worked and improved, then great
-    if (status == RESOURCE_ALLOCATION_SUCCESS) {
-      metastatus = RESOURCE_ALLOCATION_SUCCESS;
 
-      // compute minimum yield
-      minyield = compute_minimum_yield();
-      // optimize and compute maximum yield
-      maximize_average_yield();
-      aveyield = compute_average_yield();
-
-      maxminyield = minyield;
-      maxaveyield = aveyield;
-      // allocate memory
-      if (mapping == NULL) {
-        mapping = (int *)calloc(INS.numservices, sizeof(int));
-        allocation = (float *)calloc(INS.numservices, sizeof(float));
-      }
-      // save the returned answer
-      for (i=0; i < INS.numservices; i++) {
-        mapping[i] = INS.mapping[i];
-        allocation[i] = INS.allocation[i];
-      }
-      break;
-    }
-  }
-
-  if (metastatus == RESOURCE_ALLOCATION_SUCCESS) {
-    for (i=0; i < INS.numservices; i++) {
-      INS.mapping[i] = mapping[i];
-      INS.allocation[i] = allocation[i];
-    }
-  }
-    free(mapping);
-    free(allocation);
-
-  return metastatus;
+    return flex_soln;
 }
-
-
