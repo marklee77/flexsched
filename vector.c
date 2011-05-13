@@ -330,27 +330,31 @@ int MCB_put_unmapped_vector_in_bin(vp_problem vp_prob, int **lists, int
     global_float_values = vp_prob->loads[b];
     qsort(bin_key, vp_prob->num_dims, sizeof(int), cmp_float_array_idxs);
 
-    // if this is CP then we don't care about the order of the top w
-    if (isCP) {
-        qsort(bin_key, w, sizeof(int), cmp_ints);
-        // do we want to sort bottom portion as well?
-    }
-
     // compute bin key inverse
-    for (i = 0; i < vp_prob->num_dims; i++) {
+    i  = 0;
+    if (isCP) { // CP considers the first w elements to have equal weight
+        while (i < w) {
+            bin_key_inverse[bin_key[i]] = 0;
+            i++;
+        }
+    }
+    while (i < vp_prob->num_dims) {
         bin_key_inverse[bin_key[i]] = i;
+        i++;
     }
 
     list_keys_remapped = (int **)calloc(num_lists, sizeof(int *));
 
     // apply bin key inverse to list keys to get how they permute the bin key in
     // the first w elements...
-    // FIXME: some question of how this will work with CP
     for (i = 0; i < num_lists; i++) {
         lists_sortmap[i] = i;
         list_keys_remapped[i] = (int *)calloc(w, sizeof (int));
         for (j = 0; j < w; j++) {
             list_keys_remapped[i][j] = bin_key_inverse[list_keys[i][j]];
+        }
+        if (isCP) { // CP doesn't care about incomming order
+            qsort(list_keys_remapped[i], w, sizeof(int), cmp_ints);
         }
     }
 
@@ -359,17 +363,52 @@ int MCB_put_unmapped_vector_in_bin(vp_problem vp_prob, int **lists, int
     global_length = w;
     qsort(lists_sortmap, num_lists, sizeof(int), cmp_perm_idxs);
 
+    if (isCP) { // merge lists that are now equal
+        int *vectormap = (int *)calloc(vp_prob->num_vectors, sizeof(int));
+        int **new_lists = (int **)calloc(vp_prob->num_vectors, sizeof(int *));
+        int *new_list_sizes = (int *)calloc(vp_prob->num_vectors, sizeof(int));
+        int **new_list_keys = (int **)calloc(vp_prob->num_vectors, sizeof(int));
+        int new_num_lists = 0;
+        int v = 0, k;
+        i = 0;
+        while (i < num_lists) {
+            new_lists[new_num_lists] = &vectormap[v];
+            new_list_keys[new_num_lists] = list_keys[i];
+            new_list_sizes[new_num_lists] = list_sizes[i];
+            for (k = 0; k < list_sizes[i]; k++) {
+                vectormap[v++] = lists[i][k];
+            }
+            for (j = i+1; j < num_lists && 
+                !cmp_int_arrays_lex(list_keys[i], list_keys[j], w); j++) {
+                new_list_sizes[new_num_lists] += list_sizes[j];
+                for (k = 0; k < list_sizes[j]; k++) {
+                    vectormap[v++] = lists[j][k];
+                }
+            }
+            i = j;
+            // FIXME: I hate that we need to sort again, and use a global...
+            qsort(new_lists[new_num_lists], list_sizes[new_num_lists],
+                sizeof(int), global_compar);
+            new_num_lists++;
+        }
+        lists = new_lists;
+        num_lists = new_num_lists;
+        list_keys = new_list_keys;
+        list_sizes = new_list_sizes;
+    }
+
     for (i = 0; i < num_lists; i++) {
         free(list_keys_remapped[i]);
     }
     free(list_keys_remapped);
 
+    // FIXME: CP needs to free memory...
+
     for (i = 0; i < num_lists; i++) {
         for (j = 0; j < list_sizes[lists_sortmap[i]]; j++) {
             v = lists[lists_sortmap[i]][j];
             if (!vp_put_vector_in_bin_safe(vp_prob, v, b)) {
-                // FIXME: delete from list...could consider freeing memory 
-                // here...
+                // FIXME: does it make sense to remove size 0 lists? 
                 list_sizes[lists_sortmap[i]]--;
                 for(; j < list_sizes[lists_sortmap[i]]; j++) {
                     lists[lists_sortmap[i]][j] = lists[lists_sortmap[i]][j+1];
@@ -439,12 +478,6 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, char *pack, char *sort_type)
             rcmp_float_array_idxs);
     }
 
-    // if this is CP then we don't care about the order of the top w
-    if (isCP) {
-        for (i = 0; i < vp_prob->num_vectors; i++) {
-            qsort(vector_keys[i], w, sizeof(int), cmp_ints);
-        }
-    }
 
     // FIXME: theoretically at least there should be a better way than qsort...
     global_qsort_keys = vector_keys;
@@ -473,25 +506,6 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, char *pack, char *sort_type)
             list_sizes[num_lists - 1]++;
         }
     }
-
-#ifdef DEBUG
-    int k;
-    for (i = 0; i < num_lists; i++) {
-        for (j = 0; j < vp_prob->num_dims; j++) {
-            printf("%d ", list_keys[i][j]);
-        }
-        printf(": ");
-        for (j = 0; j < list_sizes[i]; j++) {
-            printf("(");
-            for (k = 0; k < vp_prob->num_dims; k++) {
-                printf("%0.3f ", vp_prob->vectors[lists[i][j]][k]);
-            }
-            printf(")");
-        }
-        printf("\n");
-    }
-    printf("\n");
-#endif
 
     // FIXME: in next version we want to sort the bins by some criteria...
     i = 0; // mapped vectors

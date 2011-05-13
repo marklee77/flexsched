@@ -257,7 +257,7 @@ int main(int argc, char *argv[])
         if (!implemented_schedulers[i].name) {
             fprintf(stderr, "Error: no scheduler called \"%s\".\n", 
                 *schedulerptr);
-	        exit(1);
+            continue;
         }
 
         // if we did find it, then run it
@@ -344,8 +344,9 @@ int main(int argc, char *argv[])
     free(flex_prob->slas);
     free(flex_prob);
 
-    for (schedulerptr = schedulers; *schedulerptr; schedulerptr++) 
+    for (schedulerptr = schedulers; *schedulerptr; schedulerptr++) {
         free(*schedulerptr);
+    }
     free(schedulers);
 
     return 0;
