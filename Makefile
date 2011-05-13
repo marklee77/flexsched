@@ -1,14 +1,16 @@
 PROG = flexsched
+OBJS = main.o util.o greedy.o linearprog.o vector.o
 
 CC = gcc
-CFLAGS = -I $(HOME)/progs/base/include -L $(HOME)/progs/base/lib -g
+CFLAGS = -I$(HOME)/progs/base/include -g #-DDEBUG
+LDFLAGS = -L$(HOME)/progs/base/lib -lglpk
 
 default: $(PROG) 
 
-$(PROG): main.o util.o greedy.o linearprog.o
-	$(CC) $(CFLAGS) main.o util.o greedy.o linearprog.o -o $(PROG)
+$(PROG): $(OBJS) 
+	$(CC) $(LDFLAGS) $(OBJS) -o $(PROG)
 
-%.o: %.c flexsched.h
+%.o: %.c flexsched.h Makefile
 	$(CC) -c $(CFLAGS) $< -o $@
 
 clean:

@@ -35,7 +35,11 @@
 #endif
 
 #ifndef CMP
-#define CMP(x, y) (((x) == (y)) ? 0 : (((x) < (y)) ? 1 : -1))
+#define CMP(x, y) (((x) == (y)) ? 0 : (((x) < (y)) ? -1 : 1))
+#endif
+
+#ifndef RCMP // NOTE: revorse compare, NOT Royal Canadian Mounted Police!
+#define RCMP(x, y) (((x) == (y)) ? 0 : (((x) < (y)) ? 1 : -1))
 #endif
 
 #define INTEGER  0
@@ -62,7 +66,7 @@ typedef struct flexsched_problem_struct {
 typedef struct flexsched_solution_struct {
     flexsched_problem prob;
     // output
-    char algorithm[25];
+    char *algorithm;
     int success;
     int *mapping;
     float *scaled_yields;
@@ -75,27 +79,20 @@ typedef struct flexsched_solution_struct {
      */
 } *flexsched_solution;
 
-/* A vector that needs to be packed */
-// FIXME: do we need the extraneous info here?
-struct vp_vector {
-  int service;  // the service to which this vector corresponds
-  int num_dims;
-  float *x;
-  float misc; // used to attached whatever value to a vector
-};
+typedef struct vp_problem_struct {
+    int num_dims;
+    int num_vectors;
+    int num_bins;
+    float **vectors;
+    float **bin_capacities;
+    // unlike with flex_prob, we just store the solution in the problem
+    int *mapping;
+    float **loads; // useful scratch variable
+    float *misc; // scratch -- inelegant but useful...
+} *vp_problem; 
 
-/* A Vector Packing instance */
-struct vp_instance {
-  // INPUT
-  int num_dims;
-  int num_vectors;
-  int num_bins;
-  struct vp_vector *vectors;
-  struct vp_vector *bins;
-  // OUTPUT
-  int *mapping;
-}; 
 
+#if 0
 /* A binary counter */
 struct binary_counter_t {
   int size;
@@ -108,6 +105,7 @@ struct int_float {
   int i;
   float f;
 };
+#endif
 
 /* Data structure describing a scheduling algorithm implementation */
 struct scheduler_t {
@@ -130,11 +128,41 @@ extern flexsched_problem flex_prob;
 /*********************************/
 
 /* utility function prototypes */
-flexsched_solution new_flexsched_solution(char *);
-void free_flexsched_solution(flexsched_solution);
-void maximize_average_yield(flexsched_solution);
+void initialize_global_server_loads();
+void free_global_server_loads();
+void add_service_load_to_server(int, int);
+double compute_LP_bound();
+float array_sum(float *, int);
+float array_max(float *, int);
+float array_min(float *, int);
+int array_argmax(float *, int);
+float compute_sum_server_load(flexsched_solution, int, const char *);
+float compute_sum_server_load_fast(int, const char *);
+float compute_server_load_in_dimension(
+    flexsched_solution, int, const char*, int);
+float compute_server_load_in_dimension_fast(int, const char*, int);
+int service_can_fit_on_server(flexsched_solution, int, int);
+int service_can_fit_on_server_fast(int, int);
+void maximize_minimum_yield_on_server(flexsched_solution, int);
 float compute_minimum_yield(flexsched_solution);
+void maximize_minimum_yield(flexsched_solution);
+void maximize_average_yield_on_server_given_minimum(
+    flexsched_solution, int, float);
+void maximize_minimum_then_average_yield(flexsched_solution);
 float compute_average_yield(flexsched_solution);
+float compute_server_sum_alloc(flexsched_solution, int);
+float compute_utilization(flexsched_solution);
+int sanity_check(flexsched_solution);
+flexsched_solution new_flexsched_solution(const char *);
+void free_flexsched_solution(flexsched_solution);
+
+/*
+void increment_binary_counter(struct binary_counter_t *);
+void print_binary_counter(struct binary_counter_t *);
+int *find_subset_of_size(vp_problem, int *, int, int);
+int find_maximum_subset(vp_problem, int *, int, int **, int);
+*/
+
 
 /* Scheduler function prototypes */
 flexsched_solution LPBOUND_scheduler(char*, char*, char*);

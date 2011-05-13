@@ -338,8 +338,12 @@ flexsched_solution GREEDY_scheduler(char *S, char *P, char *ignore)
     GREEDY_compute_mapping(P, sortmap, flex_soln);
 
     if (flex_soln->success) {
-        maximize_minimum_scaled_yields(flex_soln);
+        maximize_minimum_then_average_yield(flex_soln);
     }
+
+    // cleanup
+    free_global_server_loads();
+
     return flex_soln;
 }
 
@@ -364,13 +368,12 @@ flexsched_solution METAGREEDY_scheduler(
 
             // If worked and improved, then great
             if (curr_soln->success) {
-                flex_soln->success;
+                flex_soln->success = 1;
 
                 // compute minimum yield
                 minyield = compute_minimum_yield(curr_soln);
 
-                // optimize and compute maximum yield
-                maximize_average_yield(curr_soln);
+                // compute maximum yield
                 avgyield = compute_average_yield(curr_soln);
 
                 if (minyield > maxminyield || (minyield > maxminyield - EPSILON
@@ -381,7 +384,7 @@ flexsched_solution METAGREEDY_scheduler(
                     for (i=0; i < flex_prob->num_services; i++) {
                         flex_soln->mapping[i] = curr_soln->mapping[i];
                         flex_soln->scaled_yields[i] = 
-                            flex_soln->scaled_yields[i];
+                            curr_soln->scaled_yields[i];
                     }
                 }
             }
@@ -417,8 +420,7 @@ flexsched_solution METAGREEDYLIGHT_scheduler(char *S, char *P, char *ignore)
             // compute minimum yield
             minyield = compute_minimum_yield(curr_soln);
 
-            // optimize and compute maximum yield
-            maximize_average_yield(curr_soln);
+            // compute maximum yield
             avgyield = compute_average_yield(curr_soln);
 
             if (minyield > maxminyield || 
@@ -428,7 +430,7 @@ flexsched_solution METAGREEDYLIGHT_scheduler(char *S, char *P, char *ignore)
                 // save the returned answer
                 for (i=0; i < flex_prob->num_services; i++) {
                     flex_soln->mapping[i] = curr_soln->mapping[i];
-                    flex_soln->scaled_yields[i] = flex_soln->scaled_yields[i];
+                    flex_soln->scaled_yields[i] = curr_soln->scaled_yields[i];
                 }
             }
         }

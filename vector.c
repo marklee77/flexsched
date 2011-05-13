@@ -1,979 +1,607 @@
 #include "flexsched.h"
 
-/* Global for some VP stuff acceleration*/ 
-float **global_vp_bin_loads; 
-
-/* generate_vp_instance() */
-struct vp_instance *generate_vp_instance(float yield) 
+vp_problem new_vp_problem(float yield) 
 {
-  int i, j, dim_counter;
-  struct vp_instance *instance;
+    int i, j;
+    vp_problem vp_prob;
 
-  // INPUT
-  instance = (struct vp_instance *)calloc(1, sizeof(struct vp_instance));
-  instance->num_dims = INS.numrigid + INS.numfluid;
-  instance->num_vectors = INS.numservices;
-  instance->num_bins = INS.numservers;
-  instance->vectors = (struct vp_vector *)
-    calloc(instance->num_vectors, sizeof(struct vp_vector));
-  instance->bins = (struct vp_vector *)
-    calloc(instance->num_bins, sizeof(struct vp_vector));
-  instance->mapping = (int *)calloc(instance->num_vectors,sizeof(int));
-  for (i=0; i<instance->num_vectors; i++) {
-    instance->vectors[i].service = i;
-    instance->vectors[i].num_dims = INS.numrigid + INS.numfluid;
-    instance->vectors[i].x = (float *)calloc(instance->num_dims, sizeof(float));
-    dim_counter = 0;
-    for (j=0; j < INS.numrigid; dim_counter++, j++) {
-      instance->vectors[i].x[dim_counter] = INS.rigidneeds[i][j]; 
+    vp_prob = (vp_problem)calloc(1, sizeof(struct vp_problem_struct));
+    vp_prob->num_dims = flex_prob->num_rigid + flex_prob->num_fluid;
+    vp_prob->num_vectors = flex_prob->num_services;
+    vp_prob->num_bins = flex_prob->num_servers;
+    vp_prob->vectors = (float **)calloc(vp_prob->num_vectors, sizeof(float *));
+    vp_prob->bin_capacities = 
+        (float **)calloc(vp_prob->num_bins, sizeof(float *));
+    vp_prob->mapping = (int *)calloc(vp_prob->num_vectors, sizeof(int));
+    vp_prob->loads = (float **)calloc(vp_prob->num_bins, sizeof(float *));
+    vp_prob->misc = NULL;
+    for (i = 0; i< vp_prob->num_vectors; i++) {
+        vp_prob->vectors[i] = 
+            (float *)calloc(vp_prob->num_dims, sizeof(float));
+        vp_prob->mapping[i] = -1;
+        for (j = 0; j < flex_prob->num_rigid; j++) {
+            vp_prob->vectors[i][j] = flex_prob->rigid_needs[i][j]; 
+        }
+        for (j = 0; j < flex_prob->num_fluid; j++) {
+            vp_prob->vectors[i][flex_prob->num_rigid + j] = 
+                (flex_prob->slas[i] + yield * (1.0 - flex_prob->slas[i])) * 
+                flex_prob->fluid_needs[i][j];
+        }
     }
-    for (j=0; j < INS.numfluid; dim_counter++, j++) {
-      instance->vectors[i].x[dim_counter] = 
-              ((1.0 - INS.slas[i])*yield + INS.slas[i]) * INS.fluidneeds[i][j]; 
+    for (i = 0; i < vp_prob->num_bins; i++) {
+        vp_prob->bin_capacities[i] = 
+            (float *)calloc(vp_prob->num_dims, sizeof(float));
+        vp_prob->loads[i] = (float *)calloc(vp_prob->num_dims, sizeof(float));
+        for (j = 0; j < flex_prob->num_rigid; j++) {
+            vp_prob->bin_capacities[i][j] = flex_prob->rigid_capacities[i][j];
+            vp_prob->loads[i][j] = 0.0;
+        }
+        for (j = 0; j < flex_prob->num_fluid; j++) {
+            vp_prob->bin_capacities[i][flex_prob->num_rigid + j] = 
+                flex_prob->fluid_capacities[i][j];
+            vp_prob->loads[i][flex_prob->num_rigid + j] = 0.0;
+        }
     }
-  }
-  for (i = 0; i < instance->num_bins; i++) {
-    instance->bins[i].num_dims = INS.numrigid + INS.numfluid;
-    instance->bins[i].x = (float *)calloc(instance->num_dims, sizeof(float));
-    dim_counter = 0;
-    for (j = 0; j < INS.numrigid; dim_counter++, j++) {
-        instance->bins[i].x[dim_counter] = INS.rigidcapacities[i][j];
-    }
-    for (j = 0; j < INS.numrigid; dim_counter++, j++) {
-        instance->bins[i].x[dim_counter] = INS.fluidcapacities[i][j];
-    }
-  }
-
-  // OUTPUT
-  for (i=0; i < instance->num_vectors; i++)
-    instance->mapping[i] = -1; // initialized to "not mapped"
-
-#if 0
-  fprintf(stderr,"VP instance:\n");
-  for (i=0; i<instance->num_vectors; i++) {
-    int j;
-    for(j=0; j<instance->num_dims; j++) 
-      fprintf(stderr,"%.2f ",instance->vectors[i].x[j]);
-    fprintf(stderr,"\n");
-  }
-  fprintf(stderr,"----------------\n");
-#endif
-
-  return instance;
+    return vp_prob;
 }
 
-/* free_vp_instance */
-void free_vp_instance(struct vp_instance *instance)
+void free_vp_problem(vp_problem vp_prob)
 {
-  int i;
-  for (i=0; i<instance->num_vectors; i++) {
-    free(instance->vectors[i].x);
-  }
-  for (i=0; i<instance->num_bins; i++) {
-    free(instance->bins[i].x);
-  }
-  free(instance->vectors);
-  free(instance->bins);
-  free(instance->mapping);
-  free(instance);
-  return;
+    int i;
+    free(vp_prob->mapping);
+    for (i = 0; i < vp_prob->num_vectors; i++) {
+        free(vp_prob->vectors[i]);
+    }
+    free(vp_prob->vectors);
+    for (i = 0; i < vp_prob->num_bins; i++) {
+        free(vp_prob->bin_capacities[i]);
+        free(vp_prob->loads[i]);
+    }
+    free(vp_prob->loads);
+    free(vp_prob->misc);
+    free(vp_prob->bin_capacities);
+    free(vp_prob);
+    return;
 }
 
-/* Lexicographical comparison of vectors */
-int VP_sort_LEX(const void *x, const void *y)
+int vp_vector_can_fit_in_bin(vp_problem vp_prob, int v, int b)
 {
-  int i;
-  struct vp_vector *vx = (struct vp_vector *)x;
-  struct vp_vector *vy = (struct vp_vector *)y;
-
-  for (i=0; i < vx->num_dims; i++) {
-    if (vx->x[i] < vy->x[i])
-      return 1;
-    if (vx->x[i] > vy->x[i])
-      return -1;
-  }
-  return 0;
-}
-
-x comparison of vectors */
-int VP_sort_MAX(const void *x, const void *y)
-{
-  int i;
-  struct vp_vector *vx = (struct vp_vector *)x;
-  struct vp_vector *vy = (struct vp_vector *)y;
-  float max_x, max_y;
-
-  max_x = vx->x[0];
-  max_y = vy->x[0];
-
-  for (i=0; i < vx->num_dims; i++) {
-    if (vx->x[i] > max_x)
-      max_x = vx->x[i];
-    if (vy->x[i] > max_y)
-      max_y = vy->x[i];
-  }
-  if (max_x > max_y)
-    return -1;
-  if (max_x < max_y)
+    int i;
+    for (i = 0; i < vp_prob->num_dims; i++) {
+        if (vp_prob->loads[b][i] + vp_prob->vectors[v][i] > 
+            vp_prob->bin_capacities[b][i])
+            return 0;
+    }
     return 1;
-  return 0;
+}
+
+int vp_put_vector_in_bin_safe(vp_problem vp_prob, int v, int b)
+{
+    int i;
+    if (!vp_vector_can_fit_in_bin(vp_prob, v, b)) return 1;
+    vp_prob->mapping[v] = b;
+    for (i = 0; i < vp_prob->num_dims; i++) {
+        vp_prob->loads[b][i] += vp_prob->vectors[v][i];
+    }
+    return 0;
+}
+
+// load computed as the sum of all dims of all objects
+float vp_compute_sum_load(vp_problem vp_prob, int b)
+{
+  return array_sum(vp_prob->loads[b], vp_prob->num_dims);
+}
+
+// NOT threadsafe, but apparently we don't have qsort_r or qsort_b on tomate...
+vp_problem global_vp_prob;
+
+// compare lexicographically
+int rcmp_vp_vector_idxs_lex(const void *x_ptr, const void *y_ptr)
+{
+    int x = *((int *)x_ptr);
+    int y = *((int *)y_ptr);
+
+    int i;
+
+    for (i = 0; i < global_vp_prob->num_dims; i++) {
+        if (global_vp_prob->vectors[x][i] < global_vp_prob->vectors[y][i]) 
+            return 1;
+        if (global_vp_prob->vectors[x][i] > global_vp_prob->vectors[y][i]) 
+            return -1;
+    }
+    return 0;
+}
+
+/* max comparison of vectors */
+// for descinding order sort...
+int rcmp_vp_vector_idxs_max(const void *x_ptr, const void *y_ptr)
+{
+    int x = *((int *)x_ptr);
+    int y = *((int *)y_ptr);
+
+    return RCMP(array_max(global_vp_prob->vectors[x], global_vp_prob->num_dims),
+        array_max(global_vp_prob->vectors[y], global_vp_prob->num_dims));
 }
 
 /* Sum comparison of vectors */
-int VP_sort_SUM(const void *x, const void *y)
+// for descinding order sort...
+int rcmp_vp_vector_idxs_sum(const void *x_ptr, const void *y_ptr)
 {
-  int i;
-  struct vp_vector *vx = (struct vp_vector *)x;
-  struct vp_vector *vy = (struct vp_vector *)y;
-  float sum_x, sum_y;
+    int x = *((int *)x_ptr);
+    int y = *((int *)y_ptr);
 
-  sum_x = 0.0;
-  sum_y = 0.0;
+    return RCMP(array_sum(global_vp_prob->vectors[x], global_vp_prob->num_dims),
+        array_sum(global_vp_prob->vectors[y], global_vp_prob->num_dims));
+}
 
-  for (i=0; i < vx->num_dims; i++) {
-    sum_x += vx->x[i];
-    sum_y += vy->x[i];
-  }
+// for descinding order sort...
+int rcmp_vp_vector_idxs_maxratio(const void *x_ptr, const void *y_ptr)
+{
+    int x = *((int *)x_ptr);
+    int y = *((int *)y_ptr);
 
-  if (sum_x > sum_y)
-    return -1;
-  if (sum_x < sum_y)
-    return 1;
-  return 0;
+    return RCMP(array_max(global_vp_prob->vectors[x], global_vp_prob->num_dims)
+        / array_min(global_vp_prob->vectors[x], global_vp_prob->num_dims),
+        array_max(global_vp_prob->vectors[y], global_vp_prob->num_dims) 
+        / array_min(global_vp_prob->vectors[y], global_vp_prob->num_dims));
+}
+
+// for descinding order sort...
+int rcmp_vp_vector_idxs_maxdiff(const void *x_ptr, const void *y_ptr)
+{
+    int x = *((int *)x_ptr);
+    int y = *((int *)y_ptr);
+
+    return RCMP(array_max(global_vp_prob->vectors[x], global_vp_prob->num_dims) 
+        - array_min(global_vp_prob->vectors[x], global_vp_prob->num_dims),
+        array_max(global_vp_prob->vectors[y], global_vp_prob->num_dims) 
+        - array_min(global_vp_prob->vectors[y], global_vp_prob->num_dims));
 }
 
 /* Misc comparison of vectors  */
 /* By decreasing order of MISC */
-int VP_sort_MISC(const void *x, const void *y)
+// FIXME: only really used by Maruyama, which is not currently implemented
+int rcmp_vp_vector_idxs_misc(const void *x_ptr, const void *y_ptr)
 {
-  int i;
-  struct vp_vector *vx = (struct vp_vector *)x;
-  struct vp_vector *vy = (struct vp_vector *)y;
+    int x = *((int *)x_ptr);
+    int y = *((int *)y_ptr);
 
-  if (vx->misc > vy->misc)
-    return -1;
-  if (vx->misc < vy->misc)
-    return 1;
-  return 0;
-}
-
-int vp_vector_can_fit_in_bin(struct vp_instance *vp, int v, int b)
-{
-  int i,j;
-  float load[vp->num_dims];
-
-  for (j=0; j < vp->num_dims; j++)
-    load[j] = 0.0;
-
-  // Compute the load
-  for (i=0; i < vp->num_vectors; i++) {
-    if (vp->mapping[i] != b)
-      continue;
-    for (j=0; j < vp->num_dims; j++) {
-      load[j] += vp->vectors[i].x[j];
-    }
-  }
-
-  // Check that the load can accomodate the new vector
-  for (j=0; j < vp->num_dims; j++) {
-    if (load[j] + vp->vectors[v].x[j] > vp->bins[b].x[j])
-      return 0;
-  }
-  return 1;
-}
-
-// load computed as the sum of all dims of all objects
-int vp_vector_can_fit_in_bin_fast(struct vp_instance *vp, int v, int b)
-{
-  int i,j;
-
-  for (j=0; j < vp->num_dims; j++)  {
-    if (global_vp_bin_loads[b][j] + vp->vectors[v].x[j] > vp->bins[b].x[j]) {
-      return 0;
-    }
-  }
-  return 1;
-}
-
-// load computed as the sum of all dims of all objects
-float vp_compute_bin_load(struct vp_instance *vp, int b)
-{
-  float load = 0.0;
-  int i,j;
-
-  for (i=0; i < vp->num_vectors; i++) {
-    if (vp->mapping[i] != b)
-      continue;
-    for (j=0; j < vp->num_dims; j++)
-      load += vp->vectors[i].x[j];
-  }
-  return load;
-}
-
-// load computed as the sum of all dims of all objects
-float vp_compute_bin_load_fast(struct vp_instance *vp, int b)
-{
-  float load = 0.0;
-  int j;
-
-  for (j=0; j < vp->num_dims; j++) {
-    load += global_vp_bin_loads[b][j];
-  }
-  return load;
+    return RCMP(global_vp_prob->misc[x], global_vp_prob->misc[y]);
 }
 
 /* A helper function to compute the thingies from
  * the Maruyama article, and puts them into the misc 
- * field of the vp->vectors
+ * field of the vp_prob->vectors
  */
-void vp_compute_degrees_of_dominance(struct vp_instance *vp)
+void vp_compute_degrees_of_dominance(vp_problem vp_prob)
 {
-  int k,j,i, status;
-  float *sums, *degrees;
+    int i, j;
+    float degrees[vp_prob->num_dims];
 
-  degrees = (float *)calloc(vp->num_dims, sizeof(float));
-  sums = (float *)calloc(vp->num_bins, sizeof(float));
+    // For each dimension compute its degree of dominance
+    for (i = 0; i < vp_prob->num_dims; i++) {
+        degrees[i] = 0.0;
+        // sets the sums to zero
+        for (j = 0; j < vp_prob->num_bins; j++) 
+            degrees[i] += ceilf(vp_prob->loads[j][i] - 1.0);
 
-  // For each dimension compute its degree of dominance
-  for (j=0; j < vp->num_dims; j++) {
-    // sets the sums to zero
-    for (k=0; k < vp->num_bins; k++)
-      sums[k] = 0.0;
-    // compute the sums
-    for (i=0; i < vp->num_vectors; i++) {
-      if (vp->mapping[i] < 0) {
-        free(degrees);
-        free(sums);
-        fprintf(stderr,"Warning: can't compute degrees of dominance due to unmapped vector!\n");
-        return;
-      }
-      sums[vp->mapping[i]] += vp->vectors[i].x[j];
+        degrees[i] /= vp_prob->num_bins;
     }
-    // compute the ceil
-    for (k=0; k < vp->num_bins; k++)
-      sums[k] = ceilf(sums[k] - 1.0);
-    // compute the degree
-    degrees[j] = 0.0;
-    for (k=0; k < vp->num_bins; k++)
-      degrees[j] += sums[k];
-    degrees[j] /= vp->num_bins;
-  }
 
-  for (i=0; i < vp->num_vectors; i++) {
-    vp->vectors[i].misc = 0.0;
-    for (j=0; j < vp->num_dims; j++)
-      vp->vectors[i].misc += degrees[j] * vp->vectors[i].x[j];
-  }
+    for (i = 0; i < vp_prob->num_vectors; i++) {
+        vp_prob->misc[i] = 0.0;
+        for (j = 0; j < vp_prob->num_dims; j++)
+            vp_prob->misc[i] += degrees[j] * vp_prob->vectors[i][j];
+    }
 
-  free(sums);
-  free(degrees);
-  return;
+    return;
 }
 
 /* Implementation of The standard "Fit" algorithms for
  * solving binpacking:
  *    "FIRST"   or "BEST":  fitting policy
  *    "LEX", "MAX", or "SUM": sorting policy
- *    "MARUYAMA" sorting: the Maruyama optimization
+ *    "MARUYAMA" sorting: the Maruyama optimization // FIXME: not implemented
  *
  * Returns the number of used bins
  */
-//#define FIT_DEBUG 0
-int solve_vp_instance_FITD(const char *fit_type,
-                           const char *sort_type,
-                           struct vp_instance *vp)
+int solve_vp_problem_FITD(
+    vp_problem vp_prob, const char *fit_type, const char *sort_type)
 {
-  int i,j,k;
-  int (*compar)(const void *, const void *);
-  int max_bin;
+    int i, j, k;
+    int (*compar)(void *, const void *, const void *);
+    int sortmap[vp_prob->num_vectors];
 
-  // Sort the vectors in the instance according to the sort type
-  if (!strcmp(sort_type,"LEX")) {
-    compar = VP_sort_LEX;
-  } else if (!strcmp(sort_type,"MAX")) {
-    compar = VP_sort_MAX;
-  } else if (!strcmp(sort_type,"SUM")) {
-    compar = VP_sort_SUM;
-  } else if (!strcmp(sort_type,"MARUYAMA")) {
-    compar = VP_sort_MISC;
-  } else {
-    fprintf(stderr,"Invalid VP sort type '%s'\n",sort_type);
-    exit(1);
-  }
-  qsort(vp->vectors, vp->num_vectors,
-        sizeof(struct vp_vector), compar);
+    // set up vector sort map
+    for (i = 0; i < vp_prob->num_vectors; i++) sortmap[i] = i;
 
- // Allocate and initialize vp_bin_loads 
-  global_vp_bin_loads = (float **)calloc(vp->num_bins,sizeof(float*));
-  for (k=0; k < vp->num_bins; k++) {
-    global_vp_bin_loads[k] = (float *)calloc(vp->num_dims, sizeof(float));
-  }
+    // Sort the vectors in the instance according to the sort type
+    global_vp_prob = vp_prob;
+    if (!strcmp(sort_type, "LEX")) {
+        qsort(sortmap, vp_prob->num_vectors, sizeof(int), 
+            rcmp_vp_vector_idxs_lex);
+    } else if (!strcmp(sort_type, "MAX")) {
+        qsort(sortmap, vp_prob->num_vectors, sizeof(int),
+            rcmp_vp_vector_idxs_max);
+    } else if (!strcmp(sort_type, "SUM")) {
+        qsort(sortmap, vp_prob->num_vectors, sizeof(int),
+            rcmp_vp_vector_idxs_sum);
+    } else if (strcmp(sort_type, "NONE")) {
+        fprintf(stderr,"Invalid VP sort type '%s'\n",sort_type);
+        exit(1);
+    }
 
-  max_bin = 0;
-
-  // Place vectors into bins
-  for (i=0; i < vp->num_vectors; i++) {
+    // Place vectors into bins
     if (!strcmp(fit_type, "FIRST")) { // First Fit
-      for (j=0; j < vp->num_bins; j++) {
-        if (vp_vector_can_fit_in_bin_fast(vp, i, j)) {
-          vp->mapping[i] = j;
-          for (k=0; k < vp->num_dims; k++) {
-            global_vp_bin_loads[j][k] += vp->vectors[i].x[k];
-          }
-      if (j > max_bin)
-            max_bin = j;
-          break;
+        for (i = 0; i < vp_prob->num_vectors; i++) {
+            for (j = 0; j < vp_prob->num_bins; j++)
+                if (!vp_put_vector_in_bin_safe(vp_prob, sortmap[i], j)) break;
+            if (j >= vp_prob->num_bins) return 1;
         }
-      }
-    } else if (!strcmp(fit_type, "BEST")) { // Best Fit
-      float load, max_load = -1.0;
-#ifdef FIT_DEBUG
-      fprintf(stderr,"Trying to fit vector ");
-      for (j=0; j<vp->num_dims; j++)
-        fprintf(stderr,"%.2f ",vp->vectors[i].x[j]);
-      fprintf(stderr,"(svc=%d) into a bin\n",i);
-#endif
-      for (j=0; j<vp->num_bins; j++) {
-        if (!vp_vector_can_fit_in_bin_fast(vp, i, j)) {
-#ifdef FIT_DEBUG
-          fprintf(stderr,"  can't fit in bin %d\n",j);
-#endif
-          continue;
+    } else if (!strcmp(fit_type, "BEST")) {
+        float sumloads[vp_prob->num_bins];
+        for (i = 0; i < vp_prob->num_vectors; i++) {
+            for (j = 0; j < vp_prob->num_bins; j++) {
+                if (vp_vector_can_fit_in_bin(vp_prob, sortmap[i], j)) {
+                    sumloads[j] = vp_compute_sum_load(vp_prob, j);
+                } else {
+                    sumloads[j] = -1.0;
+                }
+            }
+            j = array_argmax(sumloads, vp_prob->num_bins);
+            if (sumloads[j] < 0.0 || 
+                vp_put_vector_in_bin_safe(vp_prob, sortmap[i], j)) return 1;
         }
-        load = vp_compute_bin_load_fast(vp, j);
-#ifdef FIT_DEBUG
-        fprintf(stderr,"  bin %d has load %.3f\n",j,load);
-#endif
-        if ((max_load == -1) || (load > max_load)) {
-          max_load = load;
-          vp->mapping[i] = j;
-          for (k=0; k < vp->num_dims; k++) {
-            global_vp_bin_loads[j][k] += vp->vectors[i].x[k];
-          }
-      if (j > max_bin)
-            max_bin = j;
-        }
-      }
     } else {
-      fprintf(stderr,"Invalid VP fit type '%s'\n",fit_type);
-      exit(1);
+        fprintf(stderr,"Invalid VP fit type '%s'\n",fit_type);
+        exit(1);
     }
-#ifdef FIT_DEBUG
-    fprintf(stderr,"vector %d (%.3f %.3f) was put in bin %d\n",
-           i,
-           vp->vectors[i].x[0],
-           vp->vectors[i].x[1],
-           vp->mapping[i]);
-#endif
-  }
-  //vp->num_bins = (max_bin+1);
 
-  for (k=0; k < vp->num_vectors; k++) {
-    free(global_vp_bin_loads[k]);
-  }
-  free(global_vp_bin_loads);
- // Apply the Marumaya optimization in case it helps, if
-  // we didn't just do it
-  // FIXME: num_bins should never be bigger than num_servers these days
-  if (vp->num_bins > INS.numservers) {
-    if (strcmp(sort_type,"MARUYAMA")) {
-      int status;
-      int old_num_bins = vp->num_bins;
-      vp_compute_degrees_of_dominance(vp);
-      status = solve_vp_instance_FITD(fit_type,"MARUYAMA",vp);
-      if (vp->num_bins <= INS.numservers) {
-        strcat(INS.misc_output,"M");
-        // fprintf(stderr,"MARUYAMA HELPED! (%d -> %d)\n", old_num_bins, vp->num_bins);
-      }
-      return status;
-    }
-  }
-
-  return VP_SOLVED;
-}
-
-void find_top_two_dims(float *array, int n,
-                       int *d1, int *d2)
-{
-  int i;
-  float max2;
-
-  *d1 = array_argmax(array,n);
-  max2 = -1.0;
-  for (i=0; i < n; i++) {
-    if (i == *d1)
-      continue;
-    if ((max2 == -1.0) || (array[i] > max2)) {
-      max2 = array[i];
-      *d2 = i;
-    }
-  }
-
-  return;
-}
-
-/* MCB_compar_MAX */
-int MCB_compar_MAX(const void *p1, const void *p2)
-{
-  struct vp_vector *v1 = *(struct vp_vector **)p1;
-  struct vp_vector *v2 = *(struct vp_vector **)p2;
-  float max1, max2;
-
-  max1 = array_max(v1->x, v1->num_dims);
-  max2 = array_max(v2->x, v2->num_dims);
-
-  if (max1 > max2) {
-    return -1;
-  } else if (max2 > max1) {
-    return 1;
-  } else {
-    return 0;
-  }
-}
-
-/* MCB_compar_SUM */
-int MCB_compar_SUM(const void *p1, const void *p2)
-{
-  struct vp_vector *v1 = *(struct vp_vector **)p1;
-  struct vp_vector *v2 = *(struct vp_vector **)p2;
-  float sum1, sum2;
-
-  sum1 = array_sum(v1->x, v1->num_dims);
-  sum2 = array_sum(v2->x, v2->num_dims);
-
-  if (sum1 > sum2)
-    return -1;
-  else if (sum2 > sum1)
-    return 1;
-  else
     return 0;
 }
 
-/* MCB_compar_MAXRATIO */
-int MCB_compar_MAXRATIO(const void *p1, const void *p2)
+int cmp_ints(const void *x_ptr, const void *y_ptr) {
+    return CMP(*((int *)x_ptr), *((int *)y_ptr));
+}
+
+float *global_float_values;
+int *global_int_values;
+
+int cmp_float_array_idxs(const void *x_ptr, const void *y_ptr)
 {
-  struct vp_vector *v1 = *(struct vp_vector **)p1;
-  struct vp_vector *v2 = *(struct vp_vector **)p2;
-  float max1, max2;
-  float min1, min2;
+    int x = *((int *)x_ptr);
+    int y = *((int *)y_ptr);
 
-  max1 = array_max(v1->x, v1->num_dims);
-  max2 = array_max(v2->x, v2->num_dims);
-  min1 = array_min(v1->x, v1->num_dims);
-  min2 = array_min(v2->x, v2->num_dims);
+    return CMP(global_float_values[x], global_float_values[y]);
+}
 
-  if (max1/min1 > max2/min2)
-    return -1;
-  else if (max2/min2 > max1/min1)
-    return 1;
-  else
+int rcmp_float_array_idxs(const void *x_ptr, const void *y_ptr)
+{
+    int x = *((int *)x_ptr);
+    int y = *((int *)y_ptr);
+
+    return RCMP(global_float_values[x], global_float_values[y]);
+}
+
+// NOT a sort function
+int cmp_int_arrays_lex(int a1[], int a2[], int length) {
+    int i;
+    for (i = 0; i < length; i++) {
+        if (a1[i] < a2[i]) return -1;
+        if (a1[i] > a2[i]) return 1;
+    }
     return 0;
 }
 
-/* MCB_compar_MAXDIFF */
-int MCB_compar_MAXDIFF(const void *p1, const void *p2)
-{
-  struct vp_vector *v1 = *(struct vp_vector **)p1;
-  struct vp_vector *v2 = *(struct vp_vector **)p2;
-  float max1, max2;
-  float min1, min2;
+int **global_qsort_keys;
+int global_length;
+int (*global_compar)(const void *, const void *);
 
-  max1 = array_max(v1->x, v1->num_dims);
-  max2 = array_max(v2->x, v2->num_dims);
-  min1 = array_min(v1->x, v1->num_dims);
-  min2 = array_min(v2->x, v2->num_dims);
-
-  if (max1-min1 > max2-min2)
-    return -1;
-  else if (max2-min2 > max1-min1)
-    return 1;
-  else
-    return 0;
+int cmp_perm_idxs(const void *x_ptr, const void *y_ptr) {
+    int x = *((int *)x_ptr);
+    int y = *((int *)y_ptr);
+    return cmp_int_arrays_lex(global_qsort_keys[x], global_qsort_keys[y], 
+        global_length);
 }
 
-int int_float_compar(const void *x, const void *y)
-{
-  struct int_float ifx = *(struct int_float *)x;
-  struct int_float ify = *(struct int_float *)y;
-
-  if (ifx.f > ify.f)
-    return 1;
-  else if (ifx.f < ify.f)
-    return -1;
-  else
-    return 0;
+int cmp_vector_idxs_by_perm_then_compar(const void *x_ptr, const void *y_ptr) {
+    int x = *((int *)x_ptr);
+    int y = *((int *)y_ptr);
+    int retval = 
+        cmp_int_arrays_lex(global_qsort_keys[x], global_qsort_keys[y], 
+        global_length);
+    if (!retval) return global_compar(x_ptr, y_ptr);
+    return retval;
 }
 
-/* helper function 
- *   Takes a bin_load and returns an array of dimension indices
- *   sorted from the lowest loaded dim to the highest loaded dim 
- */
-void sort_dims_by_increasing_load(int num_dims, int *sorted_dims, float *bin_load)
+
+int MCB_put_unmapped_vector_in_bin(vp_problem vp_prob, int **lists, int
+        *list_keys[], int *list_sizes, int num_lists, int w, int isCP, int b)
 {
-  struct int_float *sorted;
-  int i;
+    int i, j;
+    int v;
+    int bin_key[vp_prob->num_dims], bin_key_inverse[vp_prob->num_dims];
+    int **list_keys_remapped;
+    int lists_sortmap[num_lists];
 
-  sorted = (struct int_float*)calloc(num_dims,sizeof(struct int_float));
-  for (i=0; i<num_dims; i++) {
-    sorted[i].i = i;
-    sorted[i].f = bin_load[i];
-  }
+    // compute bin permutation
+    // FIXME: in next version this will be reverse order by avail. capacity...
+    for (i = 0; i < vp_prob->num_dims; i++) bin_key[i] = i;
+    global_float_values = vp_prob->loads[b];
+    qsort(bin_key, vp_prob->num_dims, sizeof(int), cmp_float_array_idxs);
 
-  qsort(sorted,num_dims,sizeof(struct int_float),int_float_compar);
-  for (i=0; i<num_dims; i++)
-    sorted_dims[i] = sorted[i].i;
-  free(sorted);
-}
-
-void add_to_list_of_lists(int first_dim, int second_dim,
-                         int *num_lists, int **first_dims, int **second_dims)
-{
-  int i;
-
-  // If already in the lists, foret it
-  for (i=0; i < *num_lists; i++) {
-    if ((first_dim == (*first_dims)[i]) &&
-        (second_dim == (*second_dims)[i])) {
-        return;
-    }
-  }
-
-  // Add to the list 
-  (*num_lists)++;
-  *first_dims = (int *)REALLOC(*first_dims, (*num_lists) * sizeof(int));
-  *second_dims = (int *)REALLOC(*second_dims, (*num_lists) * sizeof(int));
-  (*first_dims)[(*num_lists)-1] = first_dim;
-  (*second_dims)[(*num_lists)-1] = second_dim;
-
-  return;
-}
-
-/* MCB_find_and_extract_feasible_vector_in_list() 
- *  Given a vector list, and a bin load, find the first vector
- *  that fits, and remove it from the list (return it)
- *
- *  The extraction just erases the end of the list (with shifting)
- *  just to be a bit more efficient
- */
-struct vp_vector *MCB_find_and_extract_feasible_vector_in_list(
-                  int num_dims, float *bin_load, float *bin_capacity,
-                  struct vp_vector **list, int *list_size)
-{
-  struct vp_vector *vector;
-  int i,j;
-
-  for (i=0; i < *list_size; i++) {
-    // fprintf(stderr,"  Looking at: ");
-    // for (j=0; j < num_dims; j++) 
-    //   fprintf(stderr,"%.2f ",list[i]->x[j]);
-    // fprintf(stderr,"\n");
-    for (j=0; j < num_dims; j++) {
-      // FIXME: should probably be using vector fits in bin function here...
-      if (bin_capacity[j] - bin_load[j] < list[i]->x[j])
-        break;
-    }
-    if (j >= num_dims)
-      break;
-  }
-
-  if (i >= *list_size)
-    return NULL;
-
-  // extract it
-  vector = list[i];
-  for (j=i; j < *list_size-1; j++)
-    list[j] = list[j+1];
-  (*list_size)--;
-
-  return vector;
-}
-
-/* MCB_pick_vector(): The core of the BCB implementation 
- *   right now implements CP only
- */
-struct vp_vector *MCB_pick_vector(int isPP,
-                                  int num_dims, float *bin_load,
-                                  float *bin_capacity,
-                                  struct vp_vector ****lists,
-                                  int **list_sizes)
-{
-  int i,j;
-  int *sorted_dims;
-  int bottom_d, top_d;
-
-  //fprintf(stderr,"IN MCB_PICK_VECTOR\n");
-
-  // sort the bin dims by increasing load
-  sorted_dims = (int *)calloc(num_dims,sizeof(int));
-  sort_dims_by_increasing_load(num_dims, sorted_dims, bin_load);
-
-  // Go through the grinds...
-  //   **.....  (best case)
-  //   *.*....  (d1 ok, and other)
-  //   .**....  (d2 ok, and other)
-  //   *..*...  etc..
-  //   .*.*...
-  //   *...*..
-  //   .*..*..
-
-  // Construct an array of list indices to look at, in the
-  // right order 
-  int num_lists = 0;
-  int *first_dims=NULL, *second_dims=NULL;
-
- for (bottom_d = 1; bottom_d < num_dims; bottom_d++) {
-    int first_dim, second_dim;
-    for (top_d = 0; top_d < bottom_d; top_d++) {
-      // Top dim and d
-      first_dim  = sorted_dims[bottom_d];
-      second_dim = sorted_dims[top_d];
-      if (isPP) {
-        if (first_dim < second_dim) {
-         add_to_list_of_lists(first_dim, second_dim,
-                         &num_lists, &first_dims, &second_dims);
-         add_to_list_of_lists(second_dim, first_dim,
-                         &num_lists, &first_dims, &second_dims);
-        } else {
-         add_to_list_of_lists(second_dim, first_dim,
-                         &num_lists, &first_dims, &second_dims);
-         add_to_list_of_lists(first_dim, second_dim,
-                         &num_lists, &first_dims, &second_dims);
-        }
-      } else {
-        first_dim  = MAX(sorted_dims[bottom_d],sorted_dims[top_d]);
-        second_dim = MIN(sorted_dims[bottom_d],sorted_dims[top_d]);
-        add_to_list_of_lists(first_dim, second_dim,
-                         &num_lists, &first_dims, &second_dims);
-      }
-    }
-  }
-
-  free(sorted_dims);
-
-#ifdef MCB_DEBUG
-  fprintf(stderr,"Lists order: ");
-  for (i=0; i< num_lists; i++)
-    fprintf(stderr,"[%d][%d],",first_dims[i],second_dims[i]);
-  fprintf(stderr,"\n");
-#endif
- // Go through the lists in order and look for a feasible vector to pick
-  struct vp_vector *vector = NULL;
-  for (i=0; i < num_lists; i++) {
-    struct vp_vector **list = lists[first_dims[i]][second_dims[i]];
-    int *list_size = &(list_sizes[first_dims[i]][second_dims[i]]);
-#ifdef MCB_DEBUG
-    fprintf(stderr,"  Looking for a feasible vector in LIST[%d][%d] (size=%d):",
-                    first_dims[i],second_dims[i],*list_size);
-    for (j=0; j < *list_size; j++)
-      fprintf(stderr,"%d ",list[j]->service);
-    fprintf(stderr,"\n");
-#endif
-    vector = MCB_find_and_extract_feasible_vector_in_list(
-                  num_dims, bin_load, bin_capacity, list, list_size);
-    if (vector) {// We found a vector in the list
-//      fprintf(stderr,"    Picked vector corr to svc. %d in LIST[%d][%d]\n",
-//                vector->service, first_dims[i],second_dims[i]);
-      // fprintf(stderr,"  Found vector: ");
-      // int j;
-      // for (j=0; j < vector->num_dims; j++)
-      //   fprintf(stderr,"%.2f ",vector->x[j]);
-      // fprintf(stderr,"\n");
-      break;
-    }
-  }
-
-  free(first_dims); free(second_dims);
-
-  // If we found a vector, then great
-  if (vector)
-    return vector;
-  else
-    return NULL;
-}
-/*
- * The MCB implementation
- *   "PP" (permutation pack) or "CP" (choose pack)
- *   sorting type: "MAX", "SUM", "MAXDIFF", "MAXRATIO"
- * 
- *  Everything implemented for w=2
- */
-int solve_vp_instance_MCB(char *pack, char *sort_type,
-                          struct vp_instance *vp)
-{
-  int num_lists,i,j,d1,d2;
-  int (*compar)(const void *, const void *);
-  char isPP,isCP;
-
-  if (!strcmp(pack,"PP")) {
-    isPP = 1; isCP = 0;
-  } else if (!strcmp(pack,"CP")) {
-    isPP = 0; isCP = 1;
-  } else {
-    fprintf(stderr,"MCB: unknown pack type '%s'\n",pack);
-    exit(1);
-  }
-
-#ifdef MCB_DEBUG
-  fprintf(stderr,"#############################################\n");
-  fprintf(stderr,"########## SOLVING AN INSTANCE ##############\n");
-  fprintf(stderr,"#############################################\n");
-#endif
-
-  // Initialize lists
-  struct vp_vector ****lists;
-  int **list_sizes;
-
-  lists = (struct vp_vector ****)calloc(vp->num_dims,
-             sizeof(struct vp_vector ***));
-
-  list_sizes = (int **)calloc(vp->num_dims,
-             sizeof(int *));
-  for (d1=0; d1 < vp->num_dims; d1++) {
-    lists[d1] = (struct vp_vector ***)calloc(vp->num_dims,
-             sizeof(struct vp_vector **));
-    list_sizes[d1] = (int *)calloc(vp->num_dims,
-             sizeof(int));
-  }
-
-  // For CP we need only to initialize the triangular
-  // matrix but what the heck.. this doesn't hurt
-  for (d1=0; d1 < vp->num_dims; d1++) {
-    for (d2=0; d2 < vp->num_dims; d2++) {
-      lists[d1][d2] = NULL;
-      list_sizes[d1][d2] = 0;
-    }
-  }
-
-  // Put vectors in lists
-  for (i=0; i < vp->num_vectors; i++) {
-    int d1, d2;
-
-    // Find the indices of the two largest coordinates of the vector
-    // with d1 being the index of the dimension with the 
-    // largest value and d2 the index of the dimension with
-    // second largest value
-    find_top_two_dims(vp->vectors[i].x,
-                      vp->vectors[i].num_dims,&d1,&d2);
-
-    // If CP, then sort the dims indices, since we only
-    // need a triangular matrix
+    // if this is CP then we don't care about the order of the top w
     if (isCP) {
-      if (d1 < d2) {
-        int tmp = d1;
-        d1 = d2;
-        d2 = tmp;
-      }
+        qsort(bin_key, w, sizeof(int), cmp_ints);
+        // do we want to sort bottom portion as well?
     }
 
-    // Put the vector in the list
-#ifdef MCB_DEBUG
-    fprintf(stderr,"Putting vector ");
-    for (j=0; j < vp->num_dims; j++)
-      fprintf(stderr,"%.2f ",vp->vectors[i].x[j]);
-    fprintf(stderr," (svc %d) in LIST[%d][%d]\n",
-                  vp->vectors[i].service,
-                  d1,d2);
-#endif
-    list_sizes[d1][d2]++;
-    lists[d1][d2] = (struct vp_vector **)REALLOC(lists[d1][d2],
-                         list_sizes[d1][d2] * sizeof (struct vp_vector *));
-    lists[d1][d2][list_sizes[d1][d2] - 1] = &(vp->vectors[i]);
-  }
-
-  // Sort the lists according to the criteria
-  // Select the sorting function
-  if (!strcmp(sort_type,"MAX")) {
-    compar = MCB_compar_MAX;
-  } else if (!strcmp(sort_type,"SUM")) {
-    compar = MCB_compar_SUM;
-  } else if (!strcmp(sort_type,"MAXDIFF")) {
-    compar = MCB_compar_MAXDIFF;
-  } else if (!strcmp(sort_type,"MAXRATIO")) {
-    compar = MCB_compar_MAXRATIO;
-  } else {
-    fprintf(stderr,"Invalid MCB compare type '%s'\n",sort_type);
-    exit(1);
-  }
-
-  // Sort all the lists
-  for (d1=0; d1 < vp->num_dims; d1++) {
-    int d2_loop_bound;
-    if (isCP)
-      d2_loop_bound = d1;  // only triangular
-    else
-      d2_loop_bound = vp->num_dims; // full matrix
-    for (d2=0; d2 < d2_loop_bound; d2++) {
-      qsort(lists[d1][d2],list_sizes[d1][d2], sizeof(struct vp_vector *), compar);
-#ifdef MCB_DEBUG
-      fprintf(stderr,"  Sorted LIST[%d][%d] (size=%d):",
-                      d1,d2,list_sizes[d1][d2]);
-      for (j=0; j < list_sizes[d1][d2]; j++)
-        fprintf(stderr,"%d ",lists[d1][d2][j]->service);
-      fprintf(stderr,"\n");
-#endif
-    }
-  }
-
-  // Go through bins
-  int bin = 0;
-  int num_vectors_picked = 0;
-
-  float load[vp->num_bins][vp->num_dims];
-
-  // Set the loads to zero
-  for (i=0; i < vp->num_bins; i++)
-    for (j=0; j < vp->num_dims; j++)
-      load[i][j] = 0.0;
-
-  while (bin < vp->num_bins && num_vectors_picked < vp->num_vectors) {
-    struct vp_vector *vector;
-    // Pick the vector to put in the bin
-    // This call removes the vector from lists
-#ifdef MCB_DEBUG
-    fprintf(stderr,"** BIN %d load= ",bin);
-    for (j=0; j < vp->num_dims; j++)
-      fprintf(stderr,"%.2f ",load[bin][j]);
-    fprintf(stderr,"\n");
-#endif
-
-    vector = MCB_pick_vector(isPP, vp->num_dims, load[bin], vp->bins[bin].x,  lists, list_sizes);
-    if (!vector) { // Couldn't find a vector, go to next bin
-      bin++;
-      continue;
+    // compute bin key inverse
+    for (i = 0; i < vp_prob->num_dims; i++) {
+        bin_key_inverse[bin_key[i]] = i;
     }
 
-    // Update the mapping
-    vp->mapping[vector->service] = bin;
-    // Update the load of the bin
-    for (j=0; j < vp->num_dims; j++)
-      load[bin][j] += vector->x[j];
-    // Are we done?
-    num_vectors_picked++;
-  }
+    list_keys_remapped = (int **)calloc(num_lists, sizeof(int *));
 
-  // Free some memory
-  for (d1=0; d1 < vp->num_dims; d1++) {
-    free(list_sizes[d1]);
-    for (d2=0; d2 < vp->num_dims; d2++)  {
-      if (lists[d1][d2])
-        free(lists[d1][d2]);
+    // apply bin key inverse to list keys to get how they permute the bin key in
+    // the first w elements...
+    // FIXME: some question of how this will work with CP
+    for (i = 0; i < num_lists; i++) {
+        lists_sortmap[i] = i;
+        list_keys_remapped[i] = (int *)calloc(w, sizeof (int));
+        for (j = 0; j < w; j++) {
+            list_keys_remapped[i][j] = bin_key_inverse[list_keys[i][j]];
+        }
     }
-    free(lists[d1]);
-  }
-  free(lists);
-  free(list_sizes);
 
-  return (num_vectors_picked < vp->num_vectors) ? VP_NOT_SOLVED: VP_SOLVED;
+    // sort list keys using sortmap
+    global_qsort_keys = list_keys_remapped;
+    global_length = w;
+    qsort(lists_sortmap, num_lists, sizeof(int), cmp_perm_idxs);
+
+    for (i = 0; i < num_lists; i++) {
+        free(list_keys_remapped[i]);
+    }
+    free(list_keys_remapped);
+
+    for (i = 0; i < num_lists; i++) {
+        for (j = 0; j < list_sizes[lists_sortmap[i]]; j++) {
+            v = lists[lists_sortmap[i]][j];
+            if (!vp_put_vector_in_bin_safe(vp_prob, v, b)) {
+                // FIXME: delete from list...could consider freeing memory 
+                // here...
+                list_sizes[lists_sortmap[i]]--;
+                for(; j < list_sizes[lists_sortmap[i]]; j++) {
+                    lists[lists_sortmap[i]][j] = lists[lists_sortmap[i]][j+1];
+                }
+                return 0;
+            }
+        }
+    }
+
+    return 1;
 }
 
+
+int solve_vp_problem_MCB(vp_problem vp_prob, int w, char *pack, char *sort_type)
+{
+    int i, j;
+
+    int vector_sortmap[vp_prob->num_vectors];
+    int **lists, num_lists;
+
+    // there's an open question here as to whether it makes more sense to
+    // allocate num_vectors*num_dims memory, or to just allocate
+    // num_vectors*w+num_dims memory and repeatedly copy the first w elements
+    // of the array into the keys...
+    int **vector_keys;
+
+    // really the number of vectors is only an upper bound on the number
+    // of lists, but it isn't much space and this seems more elegant than
+    // repeated calls to malloc.
+    int list_sizes[vp_prob->num_vectors], *list_keys[vp_prob->num_vectors];
+
+    int isCP = 0;
+    int (*compar)(const void *, const void *);
+
+    if (!strcmp(pack, "PP")) {
+        isCP = 0;
+    } else if (!strcmp(pack, "CP")) {
+        isCP = 1;
+    } else {
+        fprintf(stderr, "MCB: unknown pack type '%s'\n", pack);
+        exit(1);
+    }
+
+    // Sort the lists according to the criteria
+    // Select the sorting function
+    if (!strcmp(sort_type,"MAX")) {
+        compar = rcmp_vp_vector_idxs_max;
+    } else if (!strcmp(sort_type,"SUM")) {
+        compar = rcmp_vp_vector_idxs_sum;
+    } else if (!strcmp(sort_type,"MAXDIFF")) {
+        compar = rcmp_vp_vector_idxs_maxdiff;
+    } else if (!strcmp(sort_type,"MAXRATIO")) {
+        compar = rcmp_vp_vector_idxs_maxratio;
+    } else {
+        fprintf(stderr, "Invalid MCB compare type '%s'\n", sort_type);
+        exit(1);
+    }
+
+    // initialize vector permutations
+    vector_keys = (int **)calloc(vp_prob->num_vectors, sizeof(int *));
+    for (i = 0; i < vp_prob->num_vectors; i++) {
+        vector_sortmap[i] = i;
+        vector_keys[i] = (int *)calloc(vp_prob->num_dims, sizeof(int));
+        for (j = 0; j < vp_prob->num_dims; j++) vector_keys[i][j] = j;
+        global_float_values = vp_prob->vectors[i];
+        qsort(vector_keys[i], vp_prob->num_dims, sizeof(int), 
+            rcmp_float_array_idxs);
+    }
+
+    // if this is CP then we don't care about the order of the top w
+    if (isCP) {
+        for (i = 0; i < vp_prob->num_vectors; i++) {
+            qsort(vector_keys[i], w, sizeof(int), cmp_ints);
+        }
+    }
+
+    // FIXME: theoretically at least there should be a better way than qsort...
+    global_qsort_keys = vector_keys;
+    global_length = w;
+    global_compar = compar;
+    global_vp_prob = vp_prob;
+    qsort(vector_sortmap, vp_prob->num_vectors, sizeof(int),
+            cmp_vector_idxs_by_perm_then_compar);
+
+
+    // assign vectors to lists based on permutation...
+    // FIXME: do realloc here?
+    lists = (int **)calloc(vp_prob->num_vectors, sizeof(int *));
+    num_lists = 1;
+    lists[0] = &vector_sortmap[0];
+    list_sizes[0] = 1;
+    list_keys[0] = vector_keys[vector_sortmap[0]];
+    for (i = 1; i < vp_prob->num_vectors; i++) {
+        if (cmp_int_arrays_lex(list_keys[num_lists - 1], 
+            vector_keys[vector_sortmap[i]], w)) {
+            lists[num_lists] = &vector_sortmap[i];
+            list_sizes[num_lists] = 1;
+            list_keys[num_lists] = vector_keys[vector_sortmap[i]];
+            num_lists++;
+        } else {
+            list_sizes[num_lists - 1]++;
+        }
+    }
+
+#ifdef DEBUG
+    int k;
+    for (i = 0; i < num_lists; i++) {
+        for (j = 0; j < vp_prob->num_dims; j++) {
+            printf("%d ", list_keys[i][j]);
+        }
+        printf(": ");
+        for (j = 0; j < list_sizes[i]; j++) {
+            printf("(");
+            for (k = 0; k < vp_prob->num_dims; k++) {
+                printf("%0.3f ", vp_prob->vectors[lists[i][j]][k]);
+            }
+            printf(")");
+        }
+        printf("\n");
+    }
+    printf("\n");
+#endif
+
+    // FIXME: in next version we want to sort the bins by some criteria...
+    i = 0; // mapped vectors
+    j = 0; // current bin
+    while (i < vp_prob->num_vectors && j < vp_prob->num_bins) {
+
+        if(MCB_put_unmapped_vector_in_bin(vp_prob, lists, list_keys, 
+            list_sizes, num_lists, w, isCP, j)) {
+            j++;
+        } else {
+            i++;
+        }
+
+    }
+
+    for (i = 0; i < vp_prob->num_vectors; i++) {
+        free(vector_keys[i]);
+    }
+
+    free(vector_keys);
+    free(lists);
+
+    return (j >= vp_prob->num_bins) ? 1 : 0;
+}
+    
 /* solve_vp_instance() 
  *  Returns the number of bins used
  */
-int solve_vp_instance(struct vp_instance *vp,
-                      char *vp_algorithm)
+int solve_vp_problem(vp_problem vp_prob, char *vp_algorithm)
 {
-  int status;
-
-  if (!strcmp(vp_algorithm,"FFDLEX")) {
-    status = solve_vp_instance_FITD("FIRST","LEX",vp);
-  } else if (!strcmp(vp_algorithm,"FFDMAX")) {
-    status = solve_vp_instance_FITD("FIRST","MAX",vp);
-  } else if (!strcmp(vp_algorithm,"FFDSUM")) {
-    status = solve_vp_instance_FITD("FIRST","SUM",vp);
-  } else if (!strcmp(vp_algorithm,"BFDLEX")) {
-    status = solve_vp_instance_FITD("BEST","LEX",vp);
-  } else if (!strcmp(vp_algorithm,"BFDMAX")) {
-    status = solve_vp_instance_FITD("BEST","MAX",vp);
-  } else if (!strcmp(vp_algorithm,"BFDSUM")) {
-    status = solve_vp_instance_FITD("BEST","SUM",vp);
-  } else if (!strcmp(vp_algorithm,"CPMAX")) {
-    status = solve_vp_instance_MCB("CP","MAX",vp);
-  } else if (!strcmp(vp_algorithm,"CPSUM")) {
-    status = solve_vp_instance_MCB("CP","SUM",vp);
-  } else if (!strcmp(vp_algorithm,"CPMAXRATIO")) {
-    status = solve_vp_instance_MCB("CP","MAXRATIO",vp);
-  } else if (!strcmp(vp_algorithm,"CPMAXDIFF")) {
-    status = solve_vp_instance_MCB("CP","MAXDIFF",vp);
-  } else if (!strcmp(vp_algorithm,"PPMAX")) {
-    status = solve_vp_instance_MCB("PP","MAX",vp);
-  } else if (!strcmp(vp_algorithm,"PPSUM")) {
-    status = solve_vp_instance_MCB("PP","SUM",vp);
-  } else if (!strcmp(vp_algorithm,"PPMAXRATIO")) {
-    status = solve_vp_instance_MCB("PP","MAXRATIO",vp);
-  } else if (!strcmp(vp_algorithm,"PPMAXDIFF")) {
-    status = solve_vp_instance_MCB("PP","MAXDIFF",vp);
-  } else if (!strcmp(vp_algorithm,"CHEKURI")) {
-    status = solve_vp_instance_CHEKURI(vp);
-  } else {
-    fprintf(stderr,"Unknown vp_algorithm '%s'\n",vp_algorithm);
-    exit(1);
-  }
-  return status;
+    int retval;
+    if (!strcmp(vp_algorithm, "FFDLEX")) {
+        retval = solve_vp_problem_FITD(vp_prob, "FIRST", "LEX");
+    } else if (!strcmp(vp_algorithm, "FFDMAX")) {
+        retval = solve_vp_problem_FITD(vp_prob, "FIRST", "MAX");
+    } else if (!strcmp(vp_algorithm, "FFDSUM")) {
+        retval = solve_vp_problem_FITD(vp_prob, "FIRST", "SUM");
+    } else if (!strcmp(vp_algorithm, "BFDLEX")) {
+        retval = solve_vp_problem_FITD(vp_prob, "BEST", "LEX");
+    } else if (!strcmp(vp_algorithm, "BFDMAX")) {
+        retval = solve_vp_problem_FITD(vp_prob, "BEST", "MAX");
+    } else if (!strcmp(vp_algorithm, "BFDSUM")) {
+        retval = solve_vp_problem_FITD(vp_prob, "BEST", "SUM");
+    } else if (!strcmp(vp_algorithm, "CPMAX")) {
+        retval = solve_vp_problem_MCB(vp_prob, 2, "CP", "MAX");
+    } else if (!strcmp(vp_algorithm, "CPSUM")) {
+        retval = solve_vp_problem_MCB(vp_prob, 2, "CP", "SUM");
+    } else if (!strcmp(vp_algorithm, "CPMAXRATIO")) {
+        retval = solve_vp_problem_MCB(vp_prob, 2, "CP", "MAXRATIO");
+    } else if (!strcmp(vp_algorithm, "CPMAXDIFF")) {
+        retval = solve_vp_problem_MCB(vp_prob, 2, "CP", "MAXDIFF");
+    } else if (!strcmp(vp_algorithm, "PPMAX")) {
+        retval = solve_vp_problem_MCB(vp_prob, 2, "PP", "MAX");
+    } else if (!strcmp(vp_algorithm, "PPSUM")) {
+        retval = solve_vp_problem_MCB(vp_prob, 2, "PP", "SUM");
+    } else if (!strcmp(vp_algorithm, "PPMAXRATIO")) {
+        retval = solve_vp_problem_MCB(vp_prob, 2, "PP", "MAXRATIO");
+    } else if (!strcmp(vp_algorithm, "PPMAXDIFF")) {
+        retval = solve_vp_problem_MCB(vp_prob, 2, "PP", "MAXDIFF");
+    } else {
+        fprintf(stderr,"Unknown vp_algorithm '%s'\n",vp_algorithm);
+        exit(1);
+    }
+    return retval;
 }
 
 /* 
  * VP_scheduler() 
  */
-int VP_scheduler(char *vp_algorithm, char *ignore2, char *ignore3)
+flexsched_solution VP_scheduler(
+    char *vp_algorithm, char *ignore2, char *ignore3)
 {
-  double yield, yieldlb, yieldub, best_yield;
-  struct vp_instance *vp = NULL;
-  int i, status;
-  int num_bins;
+    flexsched_solution flex_soln = new_flexsched_solution(vp_algorithm);
+    double yield, yieldlb, yieldub, best_yield;
+    vp_problem vp_prob = NULL;
+    int i, status;
 
-  yieldlb = 0.0;
-  yieldub = compute_LP_bound();
+    yieldlb = 0.0;
+    yieldub = compute_LP_bound();
 
-  best_yield = -1.0;
-  yield = 0.0;
+    best_yield = -1.0;
+    yield = 0.0;
 
 
-  while((yield < 1.0 - EPSILON) && (yieldub - yieldlb > 0.001)) {
-    yield = (yieldub + yieldlb) / 2.0;
-#if 0
-    fprintf(stderr,"Trying yield=%.6f (up=%.4f down=%.4f)\n",yield,yieldub,yieldlb);
-#endif
+    while(yieldub - yieldlb > 0.001) {
+        yield = (yieldub + yieldlb) / 2.0;
 
-    // Generate the VP instance
-    if (vp)
-      free_vp_instance(vp);
-    vp = generate_vp_instance(yield);
+        // Generate the VP instance
+        vp_prob = new_vp_problem(yield);
 
-    // Solve the VP instance
-    if ((status = solve_vp_instance(vp, vp_algorithm)) == VP_SOLVED) {
-      yieldlb = yield;
-      best_yield = yield;
-#if 0
-      fprintf(stderr,"Instance was solved with %d bins\n",vp->num_bins);
-#endif
+        // Solve the VP instance
+        if (solve_vp_problem(vp_prob, vp_algorithm)) {
+            yieldub = yield;
+        } else {
+            yieldlb = yield;
+            // Save the computed mapping
+            flex_soln->success = 1;
+            for (i = 0; i < flex_prob->num_services; i++) {
+                flex_soln->mapping[i] = vp_prob->mapping[i];
+            }
+        }
 
-    // Save the computed mapping
-      for (i=0; i < INS.numservices; i++) {
-        INS.mapping[vp->vectors[i].service] = vp->mapping[i];
-        INS.allocation[vp->vectors[i].service] = best_yield;
-#if 0
-        fprintf(stderr,"SERVICE %d : on server %d with yield %.2f\n",
-                vp->vectors[i].service, 
-                mapping[vp->vectors[i].service], 
-                allocation[vp->vectors[i].service]);
-#endif
-      }
-    } else {
-      yieldub = yield;
-#if 0
-      fprintf(stderr,"Instance was not solved (needed %d bins, and we have %d servers)\n",
-              vp->num_bins,INS.numservers);
-#endif
+        free_vp_problem(vp_prob);
+
     }
-  }
-  if (vp)
-    free_vp_instance(vp); // free the last instance,vp->num_bins
 
-  // We never solved the VP instance
-  if (best_yield <= 0)
-    return RESOURCE_ALLOCATION_FAILURE;
+    if (flex_soln->success) {
+        maximize_minimum_then_average_yield(flex_soln);
+    }
+  
+    return flex_soln;
 
-  // We set the yield and mapping of all services
-
-  return RESOURCE_ALLOCATION_SUCCESS;
 }

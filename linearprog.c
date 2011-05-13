@@ -7,12 +7,14 @@
 /* is contained in its own file                            */
 /***********************************************************/
 
+#define LP_IGNORE 666
+
 // Number of variables (called "columns"): 
 //  e_ij = H*(i-1)+j: 1 .. NH
 //  y_ih = N*H+(i-1)+j: NH+1 .. 2NH
 //  Y: 2NH+1
-#define LP_E_IJ_COL ((flex_prob->num_servers)*(i-1)+j)
-#define LP_Y_IJ_COL ((flex_prob->num_servers)*((flex_prob->num_services)+i-1)+j)
+#define LP_E_IJ_COL ((flex_prob->num_servers)*i+j+1)
+#define LP_Y_IJ_COL ((flex_prob->num_servers)*((flex_prob->num_services)+i)+j+1)
 #define LP_OBJ_COL  (2*(flex_prob->num_services)*(flex_prob->num_servers)+1)
 #define LP_NUM_COLS (2*(flex_prob->num_services)*(flex_prob->num_servers)+1)
 
@@ -59,8 +61,8 @@ glp_prob *create_placement_lp(int rational)
 #endif
 
     // Set bounds for the e_ij: binary if !rational
-    for (i = 1; i <= flex_prob->num_services; i++) {
-        for (j = 1; j <= flex_prob->num_servers; j++) {
+    for (i = 0; i < flex_prob->num_services; i++) {
+        for (j = 0; j < flex_prob->num_servers; j++) {
 #ifdef DEBUG
             char buffer[10];
             sprintf(buffer, "e_{%d,%d}", i, j);
@@ -82,18 +84,18 @@ glp_prob *create_placement_lp(int rational)
     row = 1; // row counter
 
     //  (A) for all i: sum_j e_ij = 1
-    for (i = 1; i <= flex_prob->num_services; i++) {
+    for (i = 0; i < flex_prob->num_services; i++) {
         glp_set_row_bnds(prob, row, GLP_FX, 1.0, 1.0);
-        for (j = 1; j <= flex_prob->num_servers; j++) {
+        for (j = 0; j < flex_prob->num_servers; j++) {
             ia[elt] = row; ja[elt] = LP_E_IJ_COL; ra[elt] = 1.0; elt++;
         }
         row++;
     }
 
     //  (B) for all i, j:  y_ih <= e_ij <=> y_ij - e_ij <= 0.0
-    for (i = 1; i <= flex_prob->num_services; i++) {
-        for (j = 1; j <= flex_prob->num_servers; j++) {
-            glp_set_row_bnds(prob, row, GLP_UP, -666, 0.0);
+    for (i = 0; i < flex_prob->num_services; i++) {
+        for (j = 0; j < flex_prob->num_servers; j++) {
+            glp_set_row_bnds(prob, row, GLP_UP, LP_IGNORE, 0.0);
             ia[elt] = row; ja[elt] = LP_Y_IJ_COL; ra[elt] = 1.0;  elt++;
             ia[elt] = row; ja[elt] = LP_E_IJ_COL; ra[elt] = -1.0; elt++;
             row++;
@@ -101,35 +103,35 @@ glp_prob *create_placement_lp(int rational)
     }
    
     //  (C) for all i: sum_h y_ih >= sla_i
-    for (i = 1; i <= flex_prob->num_services; i++) {
-        glp_set_row_bnds(prob, row, GLP_LO, flex_prob->slas[i-1], 666);
-        for (j = 1; j <= flex_prob->num_servers; j++) {
+    for (i = 0; i < flex_prob->num_services; i++) {
+        glp_set_row_bnds(prob, row, GLP_LO, flex_prob->slas[i], LP_IGNORE);
+        for (j = 0; j < flex_prob->num_servers; j++) {
             ia[elt] = row; ja[elt] = LP_Y_IJ_COL; ra[elt] = 1.0; elt++;
         }
         row++;
     }
 
     //  (D) for all h, r:  sum_i r_ij*e_ih <= 1
-    for (j = 1; j <= flex_prob->num_servers; j++) {
-        for (k = 1; k <= flex_prob->num_rigid; k++) {
-            glp_set_row_bnds(prob, row, GLP_UP, -666, 
-                flex_prob->rigid_capacities[j-1][k-1]);
-            for (i = 1; i <= flex_prob->num_services; i++) {
+    for (j = 0; j < flex_prob->num_servers; j++) {
+        for (k = 0; k < flex_prob->num_rigid; k++) {
+            glp_set_row_bnds(prob, row, GLP_UP, LP_IGNORE, 
+                flex_prob->rigid_capacities[j][k]);
+            for (i = 0; i < flex_prob->num_services; i++) {
                 ia[elt] = row; ja[elt] = LP_E_IJ_COL; 
-                ra[elt] = flex_prob->rigid_needs[i-1][k-1]; elt++;
+                ra[elt] = flex_prob->rigid_needs[i][k]; elt++;
             }
             row++;
         }
     }
 
     //  (E) for all h, f:  sum_i r_ij*y_ih <= 1
-    for (j = 1; j <= flex_prob->num_servers; j++) {
-        for (k = 1; k <= flex_prob->num_fluid; k++) {
-            glp_set_row_bnds(prob, row, GLP_UP, 666, 
-                flex_prob->fluid_capacities[j-1][k-1]);
-            for (i = 1; i <= flex_prob->num_services; i++) {
+    for (j = 0; j < flex_prob->num_servers; j++) {
+        for (k = 0; k < flex_prob->num_fluid; k++) {
+            glp_set_row_bnds(prob, row, GLP_UP, LP_IGNORE, 
+                flex_prob->fluid_capacities[j][k]);
+            for (i = 0; i < flex_prob->num_services; i++) {
                 ia[elt] = row; ja[elt] = LP_Y_IJ_COL; 
-                ra[elt] = flex_prob->fluid_needs[i-1][k-1]; elt++;
+                ra[elt] = flex_prob->fluid_needs[i][k]; elt++;
             }
             row++;
         }
@@ -137,13 +139,13 @@ glp_prob *create_placement_lp(int rational)
 
     //  (F) for all i: (sum_h y_ih - sla_i)/(1-sla_i) >= Y <=>
     //      sum_h y_ih + Y (sla_i - 1) >= sla_i 
-    for (i = 1; i <= flex_prob->num_services; i++) {
-        glp_set_row_bnds(prob, row, GLP_LO, flex_prob->slas[i-1], 666);
-        for (j = 1; j <= flex_prob->num_servers; j++) {
+    for (i = 0; i < flex_prob->num_services; i++) {
+        glp_set_row_bnds(prob, row, GLP_LO, flex_prob->slas[i], LP_IGNORE);
+        for (j = 0; j < flex_prob->num_servers; j++) {
             ia[elt] = row; ja[elt] = LP_Y_IJ_COL; ra[elt] = 1.0; elt++;
         }
         ia[elt] = row; ja[elt] = LP_OBJ_COL; 
-        ra[elt] = flex_prob->slas[i-1] - 1.0;
+        ra[elt] = flex_prob->slas[i] - 1.0;
         elt++; row++;
     }
 
@@ -183,7 +185,7 @@ int solve_linear_program(glp_prob *prob, int rational)
 
     if (rational) {
 #ifdef DEBUG
-        fprintf(stderr, "Solving a rational LP...\n");}
+        fprintf(stderr, "Solving a rational LP...\n");
 #endif
         solver_status = glp_simplex(prob, NULL);
         solution_status = (glp_get_status(prob) != GLP_OPT);
@@ -283,6 +285,7 @@ flexsched_solution MILP_scheduler(
 #endif
 
     flex_soln->success = 1;
+    maximize_minimum_then_average_yield(flex_soln);
     return flex_soln;
 }
 
@@ -311,7 +314,7 @@ void LPROUNDING_scheduler(
         total_weight = 0.0;
         for (j = 0; j < flex_prob->num_servers; j++) {
             x = MAX(glp_get_col_prim(prob, LP_E_IJ_COL), min_weight);
-            if (service_can_fit_on_server(i, j) && x > 0.0) {
+            if (service_can_fit_on_server(flex_soln, i, j) && x > 0.0) {
                 weights[j] = x;
                 total_weight += x;
             }
@@ -336,9 +339,8 @@ void LPROUNDING_scheduler(
 
     }
 
-    maximize_minimum_scaled_yields(flex_soln);
-    
     flex_soln->success = 1;
+    maximize_minimum_then_average_yield(flex_soln);
     return;
 }
 

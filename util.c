@@ -44,6 +44,23 @@ void initialize_global_server_loads()
     return;
 }
 
+void free_global_server_loads() 
+{
+    int i;
+    for (i = 0; i < flex_prob->num_servers; i++) {
+        free(global_server_rigid_loads[i]);
+        free(global_server_fluid_loads[i]);
+        free(global_server_fluidmin_loads[i]);
+    }
+    free(global_server_rigid_loads);
+    global_server_rigid_loads = NULL;
+    free(global_server_fluid_loads);
+    global_server_fluid_loads = NULL;
+    free(global_server_fluidmin_loads);
+    global_server_fluidmin_loads = NULL;
+    return;
+}
+
 void add_service_load_to_server(int service, int server) {
     int j;
 
@@ -355,6 +372,7 @@ void maximize_minimum_yield_on_server(flexsched_solution flex_soln, int server)
         if (yield < minyield) minyield = yield;
     }
 
+
     for (i = 0; i < flex_prob->num_services; i++) {
         if (flex_soln->mapping[i] != server) continue;
         flex_soln->scaled_yields[i] = minyield;
@@ -473,6 +491,111 @@ float compute_utilization(flexsched_solution flex_soln)
 }
 
 
+/* sanity_check() 
+ *
+ * Checks that resource capacities are not overcome and that
+ * the mapping is valid
+ */
+int sanity_check(flexsched_solution flex_soln)
+{
+    int i, j, k;
+    int return_value = 0;
+    float alloc;
+
+    // check that each service is mapped to a server and yields are <= 1.0
+    for (i = 0; i < flex_prob->num_services; i++) {
+        if (flex_soln->mapping[i] < 0 || 
+            flex_soln->mapping[i] >= flex_prob->num_servers) {
+            fprintf(stderr, 
+                "Error: Service %d is mapped to invalid server %d\n", i, 
+                flex_soln->mapping[i]);
+            return_value = 1;
+        }
+        if (flex_soln->scaled_yields[i] > 1.0) {
+            fprintf(stderr, "Error: Allocation of service %d is > 1.0 (%.2f)\n",
+                i, flex_soln->scaled_yields[i]);
+            return_value = 1;
+        }
+    }
+
+    // check that server capacities are respected
+    for (j = 0; j < flex_prob->num_servers; j++) {
+        // checking rigid needs
+        for (k = 0; k < flex_prob->num_rigid; k++) {
+            alloc = compute_server_load_in_dimension(flex_soln, j, "rigid", k);
+            if(flex_prob->rigid_capacities[j][k] + EPSILON < alloc) {
+                fprintf(stderr,
+                    "Error: Rigid Capacity %d of server %d exceeded (%f/%f)\n", 
+                    k, j, alloc, flex_prob->rigid_capacities[j][k]);
+                return_value = 1;
+            }
+        }
+
+        // checking fluid needs
+        // FIXME: I really don't like how this is done inconsistently
+        // FIXME: get a compute_sum_alloc_in_dimension?
+        for (k = 0; k < flex_prob->num_fluid; k++) {
+            alloc = 0.0;
+            for (i = 0; i < flex_prob->num_services; i++) {
+                if (flex_soln->mapping[i] != j) continue;
+                alloc += flex_prob->fluid_needs[i][k] * (flex_prob->slas[i] + 
+                    flex_soln->scaled_yields[i] * (1.0 - flex_prob->slas[i]));
+            }
+            if (flex_prob->fluid_capacities[j][k] + EPSILON < alloc) {
+                fprintf(stderr,
+                    "Error: Fluid Capacity %d of server %d exceeded (%f/%f)\n",
+                    k, j, alloc, flex_prob->fluid_capacities[j][k]);
+                return_value = 1;
+            }
+        }
+    }
+
+    return return_value;
+
+}
+
+flexsched_solution new_flexsched_solution(const char *algorithm) 
+{
+    int i;
+    flexsched_solution flex_soln =
+        (flexsched_solution)calloc(1, sizeof(struct flexsched_solution_struct));
+
+    if (!flex_soln) {
+        fprintf(stderr, 
+                "couldn't allocate sufficient memory for new solution!\n");
+        exit(1);
+    }
+
+    flex_soln->algorithm = strdup(algorithm);
+    if (!(flex_soln->mapping = 
+        (int *)calloc(flex_prob->num_services, sizeof(int)))) {
+        fprintf(stderr, 
+                "couldn't allocate sufficient memory for new mapping!\n");
+        exit(1);
+    }
+    if (!(flex_soln->scaled_yields =
+        (float *)calloc(flex_prob->num_services, sizeof(float)))) {
+        fprintf(stderr, "couldn't allocate sufficient memory for yields!\n");
+        exit(1);
+    }
+    for (i = 0; i < flex_prob->num_services; i++) {
+        flex_soln->mapping[i] = -1;
+        flex_soln->scaled_yields[i] = 0.0;
+    }
+    return flex_soln;
+}
+
+void free_flexsched_solution(flexsched_solution flex_soln)
+{
+    if (!flex_soln) return;
+    free(flex_soln->algorithm);
+    free(flex_soln->mapping);
+    free(flex_soln->scaled_yields);
+    free(flex_soln);
+    return;
+}
+
+#if 0
 /* increment_binary_counter()
  *   returns the sum of the bits
  */
@@ -619,86 +742,5 @@ int find_maximum_subset(struct vp_instance *vp,
   fprintf(stderr,"CHEKURI: find_maximum_subset(): Can't find a subset\n");
  return 0;
 }
+#endif
 
-float calc_stddev(int hosts, int tasks, int *taskhost, float *taskattr) {
-    int i;
-    float hostload[hosts];
-    float avghostload = 0.0;
-    float stddev = 0.0;
-    for (i = 0; i < hosts; i++) {
-        hostload[i] = 0;
-    }
-    for (i = 0; i < tasks; i++) {
-        hostload[taskhost[i]] += taskattr[i];
-        avghostload += taskattr[i];
-    }
-    avghostload /= (float)hosts;
-    for (i = 0; i < hosts; i++) {
-        stddev += (hostload[i] - avghostload) * (hostload[i] - avghostload);
-    }
-    stddev = sqrtf(stddev / (hosts - 1));
-    return stddev;
-}
-
-/* sanity_check() 
- *
- * Checks that resource capacities are not overcome and that
- * the mapping is valid
- */
-int sanity_check(flexsched_solution flex_soln)
-{
-    int i, j, k;
-    int return_value = 0;
-    float alloc;
-
-    // check that each service is mapped to a server and yields are <= 1.0
-    for (i = 0; i < flex_prob->num_services; i++) {
-        if (flex_soln->mapping[i] < 0 || 
-            flex_soln->mapping[i] >= flex_prob->num_servers) {
-            fprintf(stderr, 
-                "Error: Service %d is mapped to invalid server %d\n", i, 
-                flex_soln->mapping[i]);
-            return_value = 1;
-        }
-        if (flex_soln->scaled_yields[i] > 1.0) {
-            fprintf(stderr, "Error: Allocation of service %d is > 1.0 (%.2f)\n",
-                i, flex_soln->scaled_yields[i]);
-            return_value = 1;
-        }
-    }
-
-    // check that server capacities are respected
-    for (j = 0; j < flex_prob->num_servers; j++) {
-        // checking rigid needs
-        for (k = 0; k < flex_prob->num_rigid; k++) {
-            alloc = compute_server_load_in_dimension(flex_soln, j, "rigid", k);
-            if(flex_prob->rigid_capacities[j][k] + EPSILON < alloc) {
-                fprintf(stderr,
-                    "Error: Rigid Capacity %d of server %d exceeded (%f/%f)\n", 
-                    k, j, alloc, flex_prob->rigid_capacities[j][k]);
-                return_value = 1;
-            }
-        }
-
-        // checking fluid needs
-        // FIXME: I really don't like how this is done inconsistently
-        // FIXME: get a compute_sum_alloc_in_dimension?
-        for (k = 0; k < flex_prob->num_fluid; k++) {
-            alloc = 0.0;
-            for (i = 0; i < flex_prob->num_services; i++) {
-                if (flex_soln->mapping[i] != j) continue;
-                alloc += flex_prob->fluid_needs[i][k] * (flex_prob->slas[i] + 
-                    flex_soln->scaled_yields[i] * (1.0 - flex_prob->slas[i]));
-            }
-            if (flex_prob->fluid_capacities[j][k] + EPSILON < alloc) {
-                fprintf(stderr,
-                    "Error: Fluid Capacity %d of server %d exceeded (%f/%f)\n",
-                    k, j, alloc, flex_prob->fluid_capacities[j][k]);
-                return_value = 1;
-            }
-        }
-    }
-
-    return return_value;
-
-}

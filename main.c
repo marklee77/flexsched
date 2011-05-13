@@ -61,6 +61,7 @@ struct scheduler_t implemented_schedulers[] = {
 /*
     {"SLOWDIVING",   SLOWDIVING_scheduler, NULL, NULL, NULL},
     {"FASTDIVING",   FASTDIVING_scheduler, NULL, NULL, NULL},
+*/
     {"VP_PPMAXDIFF", VP_scheduler,         "PPMAXDIFF", NULL, NULL},
     {"VP_PPMAXRATIO",VP_scheduler,         "PPMAXRATIO", NULL, NULL},
     {"VP_PPSUM",     VP_scheduler,         "PPSUM", NULL, NULL},
@@ -75,6 +76,7 @@ struct scheduler_t implemented_schedulers[] = {
     {"VP_FFDSUM",    VP_scheduler,         "FFDSUM", NULL, NULL},
     {"VP_FFDMAX",    VP_scheduler,         "FFDMAX", NULL, NULL},
     {"VP_FFDLEX",    VP_scheduler,         "FFDLEX", NULL, NULL},
+/*
     {"VP_CHEKURI",   VP_scheduler,         "CHEKURI", NULL, NULL},
     {"GA",           GA_scheduler,         "N", "N", "N"},
     {"GAF",          GA_scheduler,         "F", "N", "N"},
@@ -186,6 +188,15 @@ int main(int argc, char *argv[])
 	    }
     }
 
+    // initialize problem
+    if (!(flex_prob = 
+        (flexsched_problem)calloc(1, sizeof(struct flexsched_problem_struct)))) 
+    {
+        fprintf(stderr, 
+            "Insufficient memory to allocate flexsched problem structure!\n");
+        exit(1);
+    }
+
     /* Parse instance file */
     fscanf(input,"%d", &flex_prob->num_rigid);
     fscanf(input,"%d", &flex_prob->num_fluid);
@@ -196,7 +207,7 @@ int main(int argc, char *argv[])
         (float **)calloc(flex_prob->num_servers, sizeof(float *));
     flex_prob->fluid_capacities = 
         (float **)calloc(flex_prob->num_servers, sizeof(float *));
-    for (i=0; i < flex_prob->num_servers; i++) {
+    for (i = 0; i < flex_prob->num_servers; i++) {
         flex_prob->rigid_capacities[i] = 
             (float *)calloc(flex_prob->num_rigid, sizeof(float *));
         flex_prob->fluid_capacities[i] = 
@@ -208,7 +219,7 @@ int main(int argc, char *argv[])
         (float **)calloc(flex_prob->num_services, sizeof(float*));
     flex_prob->fluid_needs = 
         (float **)calloc(flex_prob->num_services, sizeof(float*));
-    for (i=0; i<flex_prob->num_services; i++) {
+    for (i = 0; i < flex_prob->num_services; i++) {
       flex_prob->rigid_needs[i] = 
           (float *)calloc(flex_prob->num_rigid, sizeof(float));
       flex_prob->fluid_needs[i] = 
@@ -222,12 +233,14 @@ int main(int argc, char *argv[])
             fscanf(input,"%f", &(flex_prob->fluid_capacities[i][j]));
     }
     for (i = 0; i < flex_prob->num_services; i++) {
-      fscanf(input,"%f", &(flex_prob->slas[i]));
+      fscanf(input, "%f", &(flex_prob->slas[i]));
       for (j=0; j<flex_prob->num_rigid; j++) 
-        fscanf(input,"%f", &(flex_prob->rigid_needs[i][j]));
+        fscanf(input, "%f", &(flex_prob->rigid_needs[i][j]));
       for (j=0; j<flex_prob->num_fluid; j++) 
-        fscanf(input,"%f", &(flex_prob->fluid_needs[i][j]));
+        fscanf(input, "%f", &(flex_prob->fluid_needs[i][j]));
     }
+
+    fclose(input);
 
     flex_prob->lpbound = compute_LP_bound();
 
@@ -257,24 +270,26 @@ int main(int argc, char *argv[])
 
         gettimeofday(&time2, NULL);
 
-        if (flex_soln->success && strcmp(*schedulerptr,"LPBOUND")) {
+        if (flex_soln->success && strcmp(*schedulerptr, "LPBOUND")) {
 
             // Sanity check the allocation
-            if (sanity_check()) {
+            if (sanity_check(flex_soln)) {
                 fprintf(stderr,"Invalid allocation\n");
                 exit(1);
             }
 
+            // FIXME: maybe we get this whole optimized/non-optimized thing later?
             // maximize_average_yield()
             non_optimized_average_yield = compute_average_yield(flex_soln);
             non_optimized_utilization = compute_utilization(flex_soln);
-            maximize_average_yield(flex_soln);
+            //maximize_average_yield(flex_soln);
 
             // Re-Sanity check the allocation
-            if (sanity_check()) {
+            if (sanity_check(flex_soln)) {
                 fprintf(stderr,"Invalid allocation\n");
                 exit(1);
             }
+            
 
         }
 
@@ -306,15 +321,32 @@ int main(int argc, char *argv[])
         }
         fprintf(output, "%.3f|", elasped_seconds);
         fprintf(output, "%s\n", flex_soln->misc_output);
-        destroy_flexsched_solution(flex_soln);
+
+        // clean up
+        free_flexsched_solution(flex_soln);
+
     }
 
-    // FIXME: if we're going to bother deallocating these pointers, shouldn't we
-    // get rid of the problem as well?
+    fclose(output);
+
+    for (i = 0; i < flex_prob->num_servers; i++) {
+        free(flex_prob->rigid_capacities[i]);
+        free(flex_prob->fluid_capacities[i]);
+    }
+    free(flex_prob->rigid_capacities);
+    free(flex_prob->fluid_capacities);
+    for (i = 0; i < flex_prob->num_services; i++) {
+        free(flex_prob->rigid_needs[i]);
+        free(flex_prob->fluid_needs[i]);
+    }
+    free(flex_prob->rigid_needs);
+    free(flex_prob->fluid_needs);
+    free(flex_prob->slas);
+    free(flex_prob);
 
     for (schedulerptr = schedulers; *schedulerptr; schedulerptr++) 
         free(*schedulerptr);
     free(schedulers);
-    
+
     return 0;
 }
