@@ -314,9 +314,47 @@ int cmp_vector_idxs_by_perm_then_compar(const void *x_ptr, const void *y_ptr) {
     return retval;
 }
 
+int MCB_partition_vectors_into_lists(vp_problem vp_prob, int **vector_keys,
+    int w, int ***lists, int list_sizes[], int **list_keys)
+{
+    int i;
+    int num_lists;
+    int *vector_sortmap = (int *)calloc(vp_prob->num_vectors, sizeof(int));
 
-int MCB_put_unmapped_vector_in_bin(vp_problem vp_prob, int **lists, int
-        *list_keys[], int *list_sizes, int num_lists, int w, int isCP, int b)
+    for (i = 0; i < vp_prob->num_vectors; i++) vector_sortmap[i] = i;
+
+    // FIXME: theoretically at least there should be a better way than qsort...
+    global_qsort_keys = vector_keys;
+    global_length = w;
+    global_vp_prob = vp_prob;
+    qsort(vector_sortmap, vp_prob->num_vectors, sizeof(int), 
+        cmp_vector_idxs_by_perm_then_compar);
+
+    // assign vectors to lists based on permutation...
+    // FIXME: do realloc here?
+    num_lists = 1;
+    (*lists) = (int **)calloc(vp_prob->num_vectors, sizeof(int *));
+    (*lists)[0] = vector_sortmap;
+    list_sizes[0] = 1;
+    list_keys[0] = vector_keys[vector_sortmap[0]];
+    for (i = 1; i < vp_prob->num_vectors; i++) {
+        if (cmp_int_arrays_lex(list_keys[num_lists - 1], 
+            vector_keys[vector_sortmap[i]], w)) {
+            (*lists)[num_lists] = &vector_sortmap[i];
+            list_sizes[num_lists] = 1;
+            list_keys[num_lists] = vector_keys[vector_sortmap[i]];
+            num_lists++;
+        } else {
+            list_sizes[num_lists - 1]++;
+        }
+    }
+
+    return num_lists;
+}
+
+
+int MCB_PP_put_unmapped_vector_in_bin(vp_problem vp_prob, int w, int b, 
+    int **lists, int *list_keys[], int *list_sizes, int num_lists)
 {
     int i, j;
     int v;
@@ -331,13 +369,75 @@ int MCB_put_unmapped_vector_in_bin(vp_problem vp_prob, int **lists, int
     qsort(bin_key, vp_prob->num_dims, sizeof(int), cmp_float_array_idxs);
 
     // compute bin key inverse
+    for (i = 0; i < vp_prob->num_dims; i++) {
+        bin_key_inverse[bin_key[i]] = i;
+    }
+
+    list_keys_remapped = (int **)calloc(num_lists, sizeof(int *));
+
+    // apply bin key inverse to list keys to get how they permute the bin key in
+    // the first w elements...
+    for (i = 0; i < num_lists; i++) {
+        lists_sortmap[i] = i;
+        list_keys_remapped[i] = (int *)calloc(w, sizeof (int));
+        for (j = 0; j < w; j++) {
+            list_keys_remapped[i][j] = bin_key_inverse[list_keys[i][j]];
+        }
+    }
+
+    // sort list keys using sortmap
+    global_qsort_keys = list_keys_remapped;
+    global_length = w;
+    qsort(lists_sortmap, num_lists, sizeof(int), cmp_perm_idxs);
+
+    for (i = 0; i < num_lists; i++) {
+        free(list_keys_remapped[i]);
+    }
+    free(list_keys_remapped);
+
+    // FIXME: CP needs to free memory...
+
+    for (i = 0; i < num_lists; i++) {
+        for (j = 0; j < list_sizes[lists_sortmap[i]]; j++) {
+            v = lists[lists_sortmap[i]][j];
+            if (!vp_put_vector_in_bin_safe(vp_prob, v, b)) {
+                // FIXME: does it make sense to remove size 0 lists? 
+                list_sizes[lists_sortmap[i]]--;
+                for(; j < list_sizes[lists_sortmap[i]]; j++) {
+                    lists[lists_sortmap[i]][j] = lists[lists_sortmap[i]][j+1];
+                }
+                return 0;
+            }
+        }
+    }
+
+    return 1;
+}
+
+int MCB_CP_put_unmapped_vector_in_bin(vp_problem vp_prob, int **vector_keys, 
+    int w, int b)
+{
+    int i, j;
+    int v;
+    int bin_key[vp_prob->num_dims], bin_key_inverse[vp_prob->num_dims];
+    int **list_keys_remapped;
+    int **lists, *list_sizes, **list_keys;
+    int num_lists;
+    int lists_sortmap[num_lists];
+
+    // compute bin permutation
+    // FIXME: in next version this will be reverse order by avail. capacity...
+    for (i = 0; i < vp_prob->num_dims; i++) bin_key[i] = i;
+    global_float_values = vp_prob->loads[b];
+    qsort(bin_key, vp_prob->num_dims, sizeof(int), cmp_float_array_idxs);
+
+    // compute bin key inverse
     i  = 0;
-    if (isCP) { // CP considers the first w elements to have equal weight
+     // CP considers the first w elements to have equal weight
         while (i < w) {
             bin_key_inverse[bin_key[i]] = 0;
             i++;
         }
-    }
     while (i < vp_prob->num_dims) {
         bin_key_inverse[bin_key[i]] = i;
         i++;
@@ -353,9 +453,8 @@ int MCB_put_unmapped_vector_in_bin(vp_problem vp_prob, int **lists, int
         for (j = 0; j < w; j++) {
             list_keys_remapped[i][j] = bin_key_inverse[list_keys[i][j]];
         }
-        if (isCP) { // CP doesn't care about incomming order
+        // CP doesn't care about incomming order
             qsort(list_keys_remapped[i], w, sizeof(int), cmp_ints);
-        }
     }
 
     // sort list keys using sortmap
@@ -363,13 +462,13 @@ int MCB_put_unmapped_vector_in_bin(vp_problem vp_prob, int **lists, int
     global_length = w;
     qsort(lists_sortmap, num_lists, sizeof(int), cmp_perm_idxs);
 
-    if (isCP) { // merge lists that are now equal
+    // merge lists that are now equal
         int *vectormap = (int *)calloc(vp_prob->num_vectors, sizeof(int));
         int **new_lists = (int **)calloc(vp_prob->num_vectors, sizeof(int *));
         int *new_list_sizes = (int *)calloc(vp_prob->num_vectors, sizeof(int));
         int **new_list_keys = (int **)calloc(vp_prob->num_vectors, sizeof(int));
         int new_num_lists = 0;
-        int v = 0, k;
+        int k;
         i = 0;
         while (i < num_lists) {
             new_lists[new_num_lists] = &vectormap[v];
@@ -395,8 +494,6 @@ int MCB_put_unmapped_vector_in_bin(vp_problem vp_prob, int **lists, int
         num_lists = new_num_lists;
         list_keys = new_list_keys;
         list_sizes = new_list_sizes;
-    }
-
     for (i = 0; i < num_lists; i++) {
         free(list_keys_remapped[i]);
     }
@@ -426,8 +523,6 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, char *pack, char *sort_type)
 {
     int i, j;
 
-    int vector_sortmap[vp_prob->num_vectors];
-    int **lists, num_lists;
 
     // there's an open question here as to whether it makes more sense to
     // allocate num_vectors*num_dims memory, or to just allocate
@@ -435,13 +530,7 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, char *pack, char *sort_type)
     // of the array into the keys...
     int **vector_keys;
 
-    // really the number of vectors is only an upper bound on the number
-    // of lists, but it isn't much space and this seems more elegant than
-    // repeated calls to malloc.
-    int list_sizes[vp_prob->num_vectors], *list_keys[vp_prob->num_vectors];
-
     int isCP = 0;
-    int (*compar)(const void *, const void *);
 
     if (!strcmp(pack, "PP")) {
         isCP = 0;
@@ -455,13 +544,13 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, char *pack, char *sort_type)
     // Sort the lists according to the criteria
     // Select the sorting function
     if (!strcmp(sort_type,"MAX")) {
-        compar = rcmp_vp_vector_idxs_max;
+        global_compar = rcmp_vp_vector_idxs_max;
     } else if (!strcmp(sort_type,"SUM")) {
-        compar = rcmp_vp_vector_idxs_sum;
+        global_compar = rcmp_vp_vector_idxs_sum;
     } else if (!strcmp(sort_type,"MAXDIFF")) {
-        compar = rcmp_vp_vector_idxs_maxdiff;
+        global_compar = rcmp_vp_vector_idxs_maxdiff;
     } else if (!strcmp(sort_type,"MAXRATIO")) {
-        compar = rcmp_vp_vector_idxs_maxratio;
+        global_compar = rcmp_vp_vector_idxs_maxratio;
     } else {
         fprintf(stderr, "Invalid MCB compare type '%s'\n", sort_type);
         exit(1);
@@ -470,7 +559,6 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, char *pack, char *sort_type)
     // initialize vector permutations
     vector_keys = (int **)calloc(vp_prob->num_vectors, sizeof(int *));
     for (i = 0; i < vp_prob->num_vectors; i++) {
-        vector_sortmap[i] = i;
         vector_keys[i] = (int *)calloc(vp_prob->num_dims, sizeof(int));
         for (j = 0; j < vp_prob->num_dims; j++) vector_keys[i][j] = j;
         global_float_values = vp_prob->vectors[i];
@@ -478,47 +566,44 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, char *pack, char *sort_type)
             rcmp_float_array_idxs);
     }
 
-
-    // FIXME: theoretically at least there should be a better way than qsort...
-    global_qsort_keys = vector_keys;
-    global_length = w;
-    global_compar = compar;
-    global_vp_prob = vp_prob;
-    qsort(vector_sortmap, vp_prob->num_vectors, sizeof(int),
-            cmp_vector_idxs_by_perm_then_compar);
-
-
-    // assign vectors to lists based on permutation...
-    // FIXME: do realloc here?
-    lists = (int **)calloc(vp_prob->num_vectors, sizeof(int *));
-    num_lists = 1;
-    lists[0] = &vector_sortmap[0];
-    list_sizes[0] = 1;
-    list_keys[0] = vector_keys[vector_sortmap[0]];
-    for (i = 1; i < vp_prob->num_vectors; i++) {
-        if (cmp_int_arrays_lex(list_keys[num_lists - 1], 
-            vector_keys[vector_sortmap[i]], w)) {
-            lists[num_lists] = &vector_sortmap[i];
-            list_sizes[num_lists] = 1;
-            list_keys[num_lists] = vector_keys[vector_sortmap[i]];
-            num_lists++;
-        } else {
-            list_sizes[num_lists - 1]++;
-        }
-    }
-
     // FIXME: in next version we want to sort the bins by some criteria...
-    i = 0; // mapped vectors
-    j = 0; // current bin
-    while (i < vp_prob->num_vectors && j < vp_prob->num_bins) {
+    if (isCP) {
 
-        if(MCB_put_unmapped_vector_in_bin(vp_prob, lists, list_keys, 
-            list_sizes, num_lists, w, isCP, j)) {
-            j++;
-        } else {
-            i++;
+        i = 0; // mapped vectors
+        j = 0; // current bin
+        while (i < vp_prob->num_vectors && j < vp_prob->num_bins) {
+
+            if(MCB_CP_put_unmapped_vector_in_bin(vp_prob, vector_keys, w, j)) {
+                j++;
+            } else {
+                i++;
+            }
+
         }
 
+    } else {
+        // FIXME: maybe malloc makes sense here...
+        int **lists, num_lists;
+        int list_sizes[vp_prob->num_vectors], *list_keys[vp_prob->num_vectors];
+
+        num_lists = MCB_partition_vectors_into_lists(vp_prob, vector_keys, w, 
+            &lists, list_sizes, list_keys);
+
+        i = 0; // mapped vectors
+        j = 0; // current bin
+        while (i < vp_prob->num_vectors && j < vp_prob->num_bins) {
+
+            if(MCB_PP_put_unmapped_vector_in_bin(vp_prob, w, j, 
+                lists, list_keys, list_sizes, num_lists)) {
+                j++;
+            } else {
+                i++;
+            }
+
+        }
+
+        free(lists[0]);
+        free(lists);
     }
 
     for (i = 0; i < vp_prob->num_vectors; i++) {
@@ -526,7 +611,6 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, char *pack, char *sort_type)
     }
 
     free(vector_keys);
-    free(lists);
 
     return (j >= vp_prob->num_bins) ? 1 : 0;
 }

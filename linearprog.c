@@ -308,13 +308,14 @@ void LPROUNDING_scheduler(
     if (solve_linear_program(prob, RATIONAL)) return;
 
     srand(RANDOM_SEED);
+    initialize_global_server_loads();
 
     // For each service, pick on which server it lands
     for (i = 0; i < flex_prob->num_services; i++) {
         total_weight = 0.0;
         for (j = 0; j < flex_prob->num_servers; j++) {
             x = MAX(glp_get_col_prim(prob, LP_E_IJ_COL), min_weight);
-            if (service_can_fit_on_server(flex_soln, i, j) && x > 0.0) {
+            if (service_can_fit_on_server_fast(i, j) && x > 0.0) {
                 weights[j] = x;
                 total_weight += x;
             }
@@ -339,6 +340,7 @@ void LPROUNDING_scheduler(
 
     }
 
+    free_global_server_loads();
     flex_soln->success = 1;
     maximize_minimum_then_average_yield(flex_soln);
     return;
