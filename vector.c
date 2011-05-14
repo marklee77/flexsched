@@ -379,7 +379,7 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, int isCP,
 
             // compute bin dim positions
             j = 0;
-            if (isCP) { // CP treats first W positions as the same...
+            if (isCP) { // CP treats first w positions as the same...
                 while (j < w) {
                     bin_dim_positions[bin_dims[j]] = 0;
                     j++;
