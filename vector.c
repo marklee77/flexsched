@@ -303,11 +303,6 @@ int cmp_int_arrays_lex(int length, int a1[], int a2[]) {
     return 0;
 }
 
-int cmp_perm_array_idxs(int **vector_keys, int w, int x, int y)
-{
-    return cmp_int_arrays_lex(w, vector_keys[x], vector_keys[y]);
-}
-
 // solve vp problem using Permutation Pack or Choose Pack
 // FIXME: the comparitor doesn't really need to do all this playing around
 // with pointers since we don't sort the vectors with qsort anymore...
@@ -334,7 +329,7 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, int isCP,
         unmapped_vectors[i] = i;
         vector_keys[i] = (int *)calloc(w, sizeof(int));
         for (j = 0; j < vp_prob->num_dims; j++) vector_dims[i][j] = j;
-        qsort_r(vector_keys[i], vp_prob->num_dims, sizeof(int), 
+        qsort_r(vector_dims[i], vp_prob->num_dims, sizeof(int), 
             vp_prob->vectors[i], rcmp_float_array_idxs);
     }
 
@@ -358,9 +353,8 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, int isCP,
             }
         }
 
-        // This probably over-complicates things, but check and make
-        // sure that there's at least 2 vectors before doing all the bin
-        // dimension calculations...
+        // This probably over-complicates things, but check and make sure that 
+        // there are at least 2 vectors before doing all the PP/CP stuff
         for (i++; i < num_unmapped_vectors; i++) {
             v = unmapped_vectors[i];
             if (vp_vector_can_fit_in_bin(vp_prob, v, b)) {
@@ -375,25 +369,36 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, int isCP,
             qsort_r(bin_dims, vp_prob->num_dims, sizeof(int), 
                 vp_prob->loads[j], cmp_float_array_idxs);
 
+            /*
+            printf("bin dims: ");
+            for (j = 0; j < vp_prob->num_dims; j++) {
+                printf("%d ", bin_dims[j]);
+            }
+            printf("\n");
+            */
+
             // compute bin dim positions
-            i = 0;
+            j = 0;
             if (isCP) { // CP treats first W positions as the same...
-                while (i < w) {
-                    bin_dim_positions[bin_dims[i]] = 0;
-                    i++;
+                while (j < w) {
+                    bin_dim_positions[bin_dims[j]] = 0;
+                    j++;
                 }
             }
-            while (i < vp_prob->num_dims) {
-                bin_dim_positions[bin_dims[i]] = i;
-                i++;
+            while (j < vp_prob->num_dims) {
+                bin_dim_positions[bin_dims[j]] = j;
+                j++;
             }
 
             // apply bin key inverse to best vector key to get how it permutes
             // the bin key in the first w elements...
-            for (j = 0; j < w; j++) 
+            for (j = 0; j < w; j++) {
                 vector_keys[best_v][j] = 
-                    bin_dim_positions[vector_keys[best_v][j]];
+                    bin_dim_positions[vector_dims[best_v][j]];
+            }
 
+            // start with the current vector and look for the "best" one by the
+            // CP/PP and secondary criteria...
             for (; i < num_unmapped_vectors; i++) {
 
                 v = unmapped_vectors[i];
@@ -403,13 +408,24 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, int isCP,
                 // apply bin key inverse to vector keys to get how they permute 
                 // the bin key in the first w elements...
                 for (j = 0; j < w; j++) 
-                    vector_keys[v][j] = bin_dim_positions[vector_keys[v][j]];
+                    vector_keys[v][j] = bin_dim_positions[vector_dims[v][j]];
 
                 if (isCP) { // CP ignores position of the first w
                     qsort(vector_keys[v], w, sizeof(int), cmp_ints);
                 }
 
-                cmp_val = cmp_perm_array_idxs(vector_keys, w, v, best_v);
+                cmp_val = cmp_int_arrays_lex(w, vector_keys[v],
+                    vector_keys[best_v]);
+
+                /*
+                printf("( ");
+                for (j = 0; j < w; j++) printf("%d ", vector_keys[v][j]);
+                printf(") %s ( ", 
+                    (cmp_val < 0) ? "<" : ((cmp_val == 0) ? "=" : ">"));
+                for (j = 0; j < w; j++) printf("%d ", vector_keys[best_v][j]);
+                printf(")\n");
+                */
+
                 if (cmp_val > 0 || (0 == cmp_val && 
                     rcmp_vp_vector_idxs(vp_prob, &v, &best_v) < 0)) {
                     best_v_idx = i;
