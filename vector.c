@@ -75,14 +75,20 @@ int vp_vector_can_fit_in_bin(vp_problem vp_prob, int v, int b)
     return 1;
 }
 
-int vp_put_vector_in_bin_safe(vp_problem vp_prob, int v, int b)
+void vp_put_vector_in_bin(vp_problem vp_prob, int v, int b)
 {
     int i;
-    if (!vp_vector_can_fit_in_bin(vp_prob, v, b)) return 1;
     vp_prob->mapping[v] = b;
     for (i = 0; i < vp_prob->num_dims; i++) {
         vp_prob->loads[b][i] += vp_prob->vectors[v][i];
     }
+
+}
+
+int vp_put_vector_in_bin_safe(vp_problem vp_prob, int v, int b)
+{
+    if (!vp_vector_can_fit_in_bin(vp_prob, v, b)) return 1;
+    vp_put_vector_in_bin(vp_prob, v, b);
     return 0;
 }
 
@@ -92,81 +98,84 @@ float vp_compute_sum_load(vp_problem vp_prob, int b)
   return array_sum(vp_prob->loads[b], vp_prob->num_dims);
 }
 
-// NOT threadsafe, but apparently we don't have qsort_r or qsort_b on tomate...
-vp_problem global_vp_prob;
-
 // compare lexicographically
-int rcmp_vp_vector_idxs_lex(const void *x_ptr, const void *y_ptr)
+int rcmp_vp_vector_idxs_lex(void *vp_ptr, const void *x_ptr, const void *y_ptr)
 {
+    vp_problem vp_prob = (vp_problem)vp_ptr;
     int x = *((int *)x_ptr);
     int y = *((int *)y_ptr);
 
     int i;
 
-    for (i = 0; i < global_vp_prob->num_dims; i++) {
-        if (global_vp_prob->vectors[x][i] < global_vp_prob->vectors[y][i]) 
-            return 1;
-        if (global_vp_prob->vectors[x][i] > global_vp_prob->vectors[y][i]) 
-            return -1;
+    for (i = 0; i < vp_prob->num_dims; i++) {
+        if (vp_prob->vectors[x][i] < vp_prob->vectors[y][i]) return 1;
+        if (vp_prob->vectors[x][i] > vp_prob->vectors[y][i]) return -1;
     }
     return 0;
 }
 
 /* max comparison of vectors */
 // for descinding order sort...
-int rcmp_vp_vector_idxs_max(const void *x_ptr, const void *y_ptr)
+int rcmp_vp_vector_idxs_max(void *vp_ptr, const void *x_ptr, const void *y_ptr)
 {
+    vp_problem vp_prob = (vp_problem)vp_ptr;
     int x = *((int *)x_ptr);
     int y = *((int *)y_ptr);
 
-    return RCMP(array_max(global_vp_prob->vectors[x], global_vp_prob->num_dims),
-        array_max(global_vp_prob->vectors[y], global_vp_prob->num_dims));
+    return RCMP(array_max(vp_prob->vectors[x], vp_prob->num_dims),
+        array_max(vp_prob->vectors[y], vp_prob->num_dims));
 }
 
 /* Sum comparison of vectors */
 // for descinding order sort...
-int rcmp_vp_vector_idxs_sum(const void *x_ptr, const void *y_ptr)
+int rcmp_vp_vector_idxs_sum(void *vp_ptr, const void *x_ptr, const void *y_ptr)
 {
+    vp_problem vp_prob = (vp_problem)vp_ptr;
     int x = *((int *)x_ptr);
     int y = *((int *)y_ptr);
 
-    return RCMP(array_sum(global_vp_prob->vectors[x], global_vp_prob->num_dims),
-        array_sum(global_vp_prob->vectors[y], global_vp_prob->num_dims));
+    return RCMP(array_sum(vp_prob->vectors[x], vp_prob->num_dims),
+        array_sum(vp_prob->vectors[y], vp_prob->num_dims));
 }
 
 // for descinding order sort...
-int rcmp_vp_vector_idxs_maxratio(const void *x_ptr, const void *y_ptr)
+int rcmp_vp_vector_idxs_maxratio(void *vp_ptr, const void *x_ptr, 
+    const void *y_ptr)
 {
+    vp_problem vp_prob = (vp_problem)vp_ptr;
     int x = *((int *)x_ptr);
     int y = *((int *)y_ptr);
 
-    return RCMP(array_max(global_vp_prob->vectors[x], global_vp_prob->num_dims)
-        / array_min(global_vp_prob->vectors[x], global_vp_prob->num_dims),
-        array_max(global_vp_prob->vectors[y], global_vp_prob->num_dims) 
-        / array_min(global_vp_prob->vectors[y], global_vp_prob->num_dims));
+    return RCMP(array_max(vp_prob->vectors[x], vp_prob->num_dims) / 
+        array_min(vp_prob->vectors[x], vp_prob->num_dims), 
+        array_max(vp_prob->vectors[y], vp_prob->num_dims) / 
+        array_min(vp_prob->vectors[y], vp_prob->num_dims));
 }
 
 // for descinding order sort...
-int rcmp_vp_vector_idxs_maxdiff(const void *x_ptr, const void *y_ptr)
+int rcmp_vp_vector_idxs_maxdiff(void *vp_ptr, const void *x_ptr, 
+        const void *y_ptr)
 {
+    vp_problem vp_prob = (vp_problem)vp_ptr;
     int x = *((int *)x_ptr);
     int y = *((int *)y_ptr);
 
-    return RCMP(array_max(global_vp_prob->vectors[x], global_vp_prob->num_dims) 
-        - array_min(global_vp_prob->vectors[x], global_vp_prob->num_dims),
-        array_max(global_vp_prob->vectors[y], global_vp_prob->num_dims) 
-        - array_min(global_vp_prob->vectors[y], global_vp_prob->num_dims));
+    return RCMP(array_max(vp_prob->vectors[x], vp_prob->num_dims) - 
+        array_min(vp_prob->vectors[x], vp_prob->num_dims),
+        array_max(vp_prob->vectors[y], vp_prob->num_dims) - 
+        array_min(vp_prob->vectors[y], vp_prob->num_dims));
 }
 
 /* Misc comparison of vectors  */
 /* By decreasing order of MISC */
 // FIXME: only really used by Maruyama, which is not currently implemented
-int rcmp_vp_vector_idxs_misc(const void *x_ptr, const void *y_ptr)
+int rcmp_vp_vector_idxs_misc(void *vp_ptr, const void *x_ptr, const void *y_ptr)
 {
+    vp_problem vp_prob = (vp_problem)vp_ptr;
     int x = *((int *)x_ptr);
     int y = *((int *)y_ptr);
 
-    return RCMP(global_vp_prob->misc[x], global_vp_prob->misc[y]);
+    return RCMP(vp_prob->misc[x], vp_prob->misc[y]);
 }
 
 /* A helper function to compute the thingies from
@@ -216,15 +225,14 @@ int solve_vp_problem_FITD(
     for (i = 0; i < vp_prob->num_vectors; i++) sortmap[i] = i;
 
     // Sort the vectors in the instance according to the sort type
-    global_vp_prob = vp_prob;
     if (!strcmp(sort_type, "LEX")) {
-        qsort(sortmap, vp_prob->num_vectors, sizeof(int), 
+        qsort_r(sortmap, vp_prob->num_vectors, sizeof(int), vp_prob,
             rcmp_vp_vector_idxs_lex);
     } else if (!strcmp(sort_type, "MAX")) {
-        qsort(sortmap, vp_prob->num_vectors, sizeof(int),
+        qsort_r(sortmap, vp_prob->num_vectors, sizeof(int), vp_prob,
             rcmp_vp_vector_idxs_max);
     } else if (!strcmp(sort_type, "SUM")) {
-        qsort(sortmap, vp_prob->num_vectors, sizeof(int),
+        qsort_r(sortmap, vp_prob->num_vectors, sizeof(int), vp_prob,
             rcmp_vp_vector_idxs_sum);
     } else if (strcmp(sort_type, "NONE")) {
         fprintf(stderr,"Invalid VP sort type '%s'\n",sort_type);
@@ -260,31 +268,33 @@ int solve_vp_problem_FITD(
     return 0;
 }
 
-int cmp_ints(const void *x_ptr, const void *y_ptr) {
-    return CMP(*((int *)x_ptr), *((int *)y_ptr));
-}
-
-float *global_float_values;
-int *global_int_values;
-
-int cmp_float_array_idxs(const void *x_ptr, const void *y_ptr)
+int cmp_ints(const void *x_ptr, const void *y_ptr)
 {
     int x = *((int *)x_ptr);
     int y = *((int *)y_ptr);
-
-    return CMP(global_float_values[x], global_float_values[y]);
+    return CMP(x, y);
 }
 
-int rcmp_float_array_idxs(const void *x_ptr, const void *y_ptr)
+int cmp_float_array_idxs(void *vals_ptr, const void *x_ptr, const void *y_ptr)
 {
+    float *vals = (float *)vals_ptr;
     int x = *((int *)x_ptr);
     int y = *((int *)y_ptr);
 
-    return RCMP(global_float_values[x], global_float_values[y]);
+    return CMP(vals[x], vals[y]);
 }
 
-// NOT a sort function
-int cmp_int_arrays_lex(int a1[], int a2[], int length) {
+int rcmp_float_array_idxs(void *vals_ptr, const void *x_ptr, const void *y_ptr)
+{
+    float *vals = (float *)vals_ptr;
+    int x = *((int *)x_ptr);
+    int y = *((int *)y_ptr);
+
+    return RCMP(vals[x], vals[y]);
+}
+
+// NOT sort functions
+int cmp_int_arrays_lex(int length, int a1[], int a2[]) {
     int i;
     for (i = 0; i < length; i++) {
         if (a1[i] < a2[i]) return -1;
@@ -293,326 +303,141 @@ int cmp_int_arrays_lex(int a1[], int a2[], int length) {
     return 0;
 }
 
-int **global_qsort_keys;
-int global_length;
-int (*global_compar)(const void *, const void *);
-
-int cmp_perm_idxs(const void *x_ptr, const void *y_ptr) {
-    int x = *((int *)x_ptr);
-    int y = *((int *)y_ptr);
-    return cmp_int_arrays_lex(global_qsort_keys[x], global_qsort_keys[y], 
-        global_length);
-}
-
-int cmp_vector_idxs_by_perm_then_compar(const void *x_ptr, const void *y_ptr) {
-    int x = *((int *)x_ptr);
-    int y = *((int *)y_ptr);
-    int retval = 
-        cmp_int_arrays_lex(global_qsort_keys[x], global_qsort_keys[y], 
-        global_length);
-    if (!retval) return global_compar(x_ptr, y_ptr);
-    return retval;
-}
-
-int MCB_partition_vectors_into_lists(vp_problem vp_prob, int **vector_keys,
-    int w, int ***lists, int list_sizes[], int **list_keys)
+int cmp_perm_array_idxs(int **vector_keys, int w, int x, int y)
 {
-    int i;
-    int num_lists;
-    int *vector_sortmap = (int *)calloc(vp_prob->num_vectors, sizeof(int));
-
-    for (i = 0; i < vp_prob->num_vectors; i++) vector_sortmap[i] = i;
-
-    // FIXME: theoretically at least there should be a better way than qsort...
-    global_qsort_keys = vector_keys;
-    global_length = w;
-    global_vp_prob = vp_prob;
-    qsort(vector_sortmap, vp_prob->num_vectors, sizeof(int), 
-        cmp_vector_idxs_by_perm_then_compar);
-
-    // assign vectors to lists based on permutation...
-    // FIXME: do realloc here?
-    num_lists = 1;
-    (*lists) = (int **)calloc(vp_prob->num_vectors, sizeof(int *));
-    (*lists)[0] = vector_sortmap;
-    list_sizes[0] = 1;
-    list_keys[0] = vector_keys[vector_sortmap[0]];
-    for (i = 1; i < vp_prob->num_vectors; i++) {
-        if (cmp_int_arrays_lex(list_keys[num_lists - 1], 
-            vector_keys[vector_sortmap[i]], w)) {
-            (*lists)[num_lists] = &vector_sortmap[i];
-            list_sizes[num_lists] = 1;
-            list_keys[num_lists] = vector_keys[vector_sortmap[i]];
-            num_lists++;
-        } else {
-            list_sizes[num_lists - 1]++;
-        }
-    }
-
-    return num_lists;
+    return cmp_int_arrays_lex(w, vector_keys[x], vector_keys[y]);
 }
 
-
-int MCB_PP_put_unmapped_vector_in_bin(vp_problem vp_prob, int w, int b, 
-    int **lists, int *list_keys[], int *list_sizes, int num_lists)
-{
-    int i, j;
-    int v;
-    int bin_key[vp_prob->num_dims], bin_key_inverse[vp_prob->num_dims];
-    int **list_keys_remapped;
-    int lists_sortmap[num_lists];
-
-    // compute bin permutation
-    // FIXME: in next version this will be reverse order by avail. capacity...
-    for (i = 0; i < vp_prob->num_dims; i++) bin_key[i] = i;
-    global_float_values = vp_prob->loads[b];
-    qsort(bin_key, vp_prob->num_dims, sizeof(int), cmp_float_array_idxs);
-
-    // compute bin key inverse
-    for (i = 0; i < vp_prob->num_dims; i++) {
-        bin_key_inverse[bin_key[i]] = i;
-    }
-
-    list_keys_remapped = (int **)calloc(num_lists, sizeof(int *));
-
-    // apply bin key inverse to list keys to get how they permute the bin key in
-    // the first w elements...
-    for (i = 0; i < num_lists; i++) {
-        lists_sortmap[i] = i;
-        list_keys_remapped[i] = (int *)calloc(w, sizeof (int));
-        for (j = 0; j < w; j++) {
-            list_keys_remapped[i][j] = bin_key_inverse[list_keys[i][j]];
-        }
-    }
-
-    // sort list keys using sortmap
-    global_qsort_keys = list_keys_remapped;
-    global_length = w;
-    qsort(lists_sortmap, num_lists, sizeof(int), cmp_perm_idxs);
-
-    for (i = 0; i < num_lists; i++) {
-        free(list_keys_remapped[i]);
-    }
-    free(list_keys_remapped);
-
-    // FIXME: CP needs to free memory...
-
-    for (i = 0; i < num_lists; i++) {
-        for (j = 0; j < list_sizes[lists_sortmap[i]]; j++) {
-            v = lists[lists_sortmap[i]][j];
-            if (!vp_put_vector_in_bin_safe(vp_prob, v, b)) {
-                // FIXME: does it make sense to remove size 0 lists? 
-                list_sizes[lists_sortmap[i]]--;
-                for(; j < list_sizes[lists_sortmap[i]]; j++) {
-                    lists[lists_sortmap[i]][j] = lists[lists_sortmap[i]][j+1];
-                }
-                return 0;
-            }
-        }
-    }
-
-    return 1;
-}
-
-int MCB_CP_put_unmapped_vector_in_bin(vp_problem vp_prob, int **vector_keys, 
-    int w, int b)
-{
-    int i, j;
-    int v;
-    int bin_key[vp_prob->num_dims], bin_key_inverse[vp_prob->num_dims];
-    int **list_keys_remapped;
-    int **lists, *list_sizes, **list_keys;
-    int num_lists;
-    int lists_sortmap[num_lists];
-
-    // compute bin permutation
-    // FIXME: in next version this will be reverse order by avail. capacity...
-    for (i = 0; i < vp_prob->num_dims; i++) bin_key[i] = i;
-    global_float_values = vp_prob->loads[b];
-    qsort(bin_key, vp_prob->num_dims, sizeof(int), cmp_float_array_idxs);
-
-    // compute bin key inverse
-    i  = 0;
-     // CP considers the first w elements to have equal weight
-        while (i < w) {
-            bin_key_inverse[bin_key[i]] = 0;
-            i++;
-        }
-    while (i < vp_prob->num_dims) {
-        bin_key_inverse[bin_key[i]] = i;
-        i++;
-    }
-
-    list_keys_remapped = (int **)calloc(num_lists, sizeof(int *));
-
-    // apply bin key inverse to list keys to get how they permute the bin key in
-    // the first w elements...
-    for (i = 0; i < num_lists; i++) {
-        lists_sortmap[i] = i;
-        list_keys_remapped[i] = (int *)calloc(w, sizeof (int));
-        for (j = 0; j < w; j++) {
-            list_keys_remapped[i][j] = bin_key_inverse[list_keys[i][j]];
-        }
-        // CP doesn't care about incomming order
-            qsort(list_keys_remapped[i], w, sizeof(int), cmp_ints);
-    }
-
-    // sort list keys using sortmap
-    global_qsort_keys = list_keys_remapped;
-    global_length = w;
-    qsort(lists_sortmap, num_lists, sizeof(int), cmp_perm_idxs);
-
-    // merge lists that are now equal
-        int *vectormap = (int *)calloc(vp_prob->num_vectors, sizeof(int));
-        int **new_lists = (int **)calloc(vp_prob->num_vectors, sizeof(int *));
-        int *new_list_sizes = (int *)calloc(vp_prob->num_vectors, sizeof(int));
-        int **new_list_keys = (int **)calloc(vp_prob->num_vectors, sizeof(int));
-        int new_num_lists = 0;
-        int k;
-        i = 0;
-        while (i < num_lists) {
-            new_lists[new_num_lists] = &vectormap[v];
-            new_list_keys[new_num_lists] = list_keys[i];
-            new_list_sizes[new_num_lists] = list_sizes[i];
-            for (k = 0; k < list_sizes[i]; k++) {
-                vectormap[v++] = lists[i][k];
-            }
-            for (j = i+1; j < num_lists && 
-                !cmp_int_arrays_lex(list_keys[i], list_keys[j], w); j++) {
-                new_list_sizes[new_num_lists] += list_sizes[j];
-                for (k = 0; k < list_sizes[j]; k++) {
-                    vectormap[v++] = lists[j][k];
-                }
-            }
-            i = j;
-            // FIXME: I hate that we need to sort again, and use a global...
-            qsort(new_lists[new_num_lists], list_sizes[new_num_lists],
-                sizeof(int), global_compar);
-            new_num_lists++;
-        }
-        lists = new_lists;
-        num_lists = new_num_lists;
-        list_keys = new_list_keys;
-        list_sizes = new_list_sizes;
-    for (i = 0; i < num_lists; i++) {
-        free(list_keys_remapped[i]);
-    }
-    free(list_keys_remapped);
-
-    // FIXME: CP needs to free memory...
-
-    for (i = 0; i < num_lists; i++) {
-        for (j = 0; j < list_sizes[lists_sortmap[i]]; j++) {
-            v = lists[lists_sortmap[i]][j];
-            if (!vp_put_vector_in_bin_safe(vp_prob, v, b)) {
-                // FIXME: does it make sense to remove size 0 lists? 
-                list_sizes[lists_sortmap[i]]--;
-                for(; j < list_sizes[lists_sortmap[i]]; j++) {
-                    lists[lists_sortmap[i]][j] = lists[lists_sortmap[i]][j+1];
-                }
-                return 0;
-            }
-        }
-    }
-
-    return 1;
-}
-
-
-int solve_vp_problem_MCB(vp_problem vp_prob, int w, char *pack, char *sort_type)
+// solve vp problem using Permutation Pack or Choose Pack
+// FIXME: the comparitor doesn't really need to do all this playing around
+// with pointers since we don't sort the vectors with qsort anymore...
+int solve_vp_problem_MCB(vp_problem vp_prob, int w, int isCP, 
+    int (*rcmp_vp_vector_idxs)(void *, const void *, const void *))
 {
     int i, j;
 
+    int vector_dims[vp_prob->num_vectors][vp_prob->num_dims];
+    int bin_dims[vp_prob->num_dims];
 
-    // there's an open question here as to whether it makes more sense to
-    // allocate num_vectors*num_dims memory, or to just allocate
-    // num_vectors*w+num_dims memory and repeatedly copy the first w elements
-    // of the array into the keys...
-    int **vector_keys;
+    int unmapped_vectors[vp_prob->num_vectors];
+    int num_unmapped_vectors;
 
-    int isCP = 0;
+    int b, v, best_v, best_v_idx, cmp_val;
 
-    if (!strcmp(pack, "PP")) {
-        isCP = 0;
-    } else if (!strcmp(pack, "CP")) {
-        isCP = 1;
-    } else {
-        fprintf(stderr, "MCB: unknown pack type '%s'\n", pack);
-        exit(1);
-    }
+    int bin_dim_positions[vp_prob->num_dims];
 
-    // Sort the lists according to the criteria
-    // Select the sorting function
-    if (!strcmp(sort_type,"MAX")) {
-        global_compar = rcmp_vp_vector_idxs_max;
-    } else if (!strcmp(sort_type,"SUM")) {
-        global_compar = rcmp_vp_vector_idxs_sum;
-    } else if (!strcmp(sort_type,"MAXDIFF")) {
-        global_compar = rcmp_vp_vector_idxs_maxdiff;
-    } else if (!strcmp(sort_type,"MAXRATIO")) {
-        global_compar = rcmp_vp_vector_idxs_maxratio;
-    } else {
-        fprintf(stderr, "Invalid MCB compare type '%s'\n", sort_type);
-        exit(1);
-    }
+    // stupid complicated rules for function calls to multidimensional arrays...
+    int *vector_keys[vp_prob->num_vectors];
 
-    // initialize vector permutations
-    vector_keys = (int **)calloc(vp_prob->num_vectors, sizeof(int *));
+    // initialize unmapped vectors, vector keys, and vector dims
     for (i = 0; i < vp_prob->num_vectors; i++) {
-        vector_keys[i] = (int *)calloc(vp_prob->num_dims, sizeof(int));
-        for (j = 0; j < vp_prob->num_dims; j++) vector_keys[i][j] = j;
-        global_float_values = vp_prob->vectors[i];
-        qsort(vector_keys[i], vp_prob->num_dims, sizeof(int), 
-            rcmp_float_array_idxs);
+        unmapped_vectors[i] = i;
+        vector_keys[i] = (int *)calloc(w, sizeof(int));
+        for (j = 0; j < vp_prob->num_dims; j++) vector_dims[i][j] = j;
+        qsort_r(vector_keys[i], vp_prob->num_dims, sizeof(int), 
+            vp_prob->vectors[i], rcmp_float_array_idxs);
     }
 
-    // FIXME: in next version we want to sort the bins by some criteria...
-    if (isCP) {
+    // initialize bin dims
+    for (i = 0; i < vp_prob->num_dims; i++) bin_dims[i] = i;
 
-        i = 0; // mapped vectors
-        j = 0; // current bin
-        while (i < vp_prob->num_vectors && j < vp_prob->num_bins) {
+    b = 0;
+    num_unmapped_vectors = vp_prob->num_vectors;
+    while (b < vp_prob->num_bins && num_unmapped_vectors > 0) {
 
-            if(MCB_CP_put_unmapped_vector_in_bin(vp_prob, vector_keys, w, j)) {
-                j++;
-            } else {
+        best_v = -1;
+        best_v_idx = -1;
+
+        // Find the first vector that can be put in the bin
+        for (i = 0; i < num_unmapped_vectors; i++) {
+            v = unmapped_vectors[i];
+            if (vp_vector_can_fit_in_bin(vp_prob, v, b)) {
+                best_v = v;
+                best_v_idx = i;
+                break;
+            }
+        }
+
+        // This probably over-complicates things, but check and make
+        // sure that there's at least 2 vectors before doing all the bin
+        // dimension calculations...
+        for (i++; i < num_unmapped_vectors; i++) {
+            v = unmapped_vectors[i];
+            if (vp_vector_can_fit_in_bin(vp_prob, v, b)) {
+                break;
+            }
+        }
+
+        if (i < num_unmapped_vectors) {
+
+            // compute bin permutation
+            // FIXME: in next version this will be reverse order by capacity...
+            qsort_r(bin_dims, vp_prob->num_dims, sizeof(int), 
+                vp_prob->loads[j], cmp_float_array_idxs);
+
+            // compute bin dim positions
+            i = 0;
+            if (isCP) { // CP treats first W positions as the same...
+                while (i < w) {
+                    bin_dim_positions[bin_dims[i]] = 0;
+                    i++;
+                }
+            }
+            while (i < vp_prob->num_dims) {
+                bin_dim_positions[bin_dims[i]] = i;
                 i++;
+            }
+
+            // apply bin key inverse to best vector key to get how it permutes
+            // the bin key in the first w elements...
+            for (j = 0; j < w; j++) 
+                vector_keys[best_v][j] = 
+                    bin_dim_positions[vector_keys[best_v][j]];
+
+            for (; i < num_unmapped_vectors; i++) {
+
+                v = unmapped_vectors[i];
+
+                if (!vp_vector_can_fit_in_bin(vp_prob, v, b)) continue;
+
+                // apply bin key inverse to vector keys to get how they permute 
+                // the bin key in the first w elements...
+                for (j = 0; j < w; j++) 
+                    vector_keys[v][j] = bin_dim_positions[vector_keys[v][j]];
+
+                if (isCP) { // CP ignores position of the first w
+                    qsort(vector_keys[v], w, sizeof(int), cmp_ints);
+                }
+
+                cmp_val = cmp_perm_array_idxs(vector_keys, w, v, best_v);
+                if (cmp_val > 0 || (0 == cmp_val && 
+                    rcmp_vp_vector_idxs(vp_prob, &v, &best_v) < 0)) {
+                    best_v_idx = i;
+                    best_v = v;
+                }
+
             }
 
         }
 
-    } else {
-        // FIXME: maybe malloc makes sense here...
-        int **lists, num_lists;
-        int list_sizes[vp_prob->num_vectors], *list_keys[vp_prob->num_vectors];
-
-        num_lists = MCB_partition_vectors_into_lists(vp_prob, vector_keys, w, 
-            &lists, list_sizes, list_keys);
-
-        i = 0; // mapped vectors
-        j = 0; // current bin
-        while (i < vp_prob->num_vectors && j < vp_prob->num_bins) {
-
-            if(MCB_PP_put_unmapped_vector_in_bin(vp_prob, w, j, 
-                lists, list_keys, list_sizes, num_lists)) {
-                j++;
-            } else {
-                i++;
-            }
-
+        // if we found a vector put it in the bin and delete from the list of
+        // unmapped vectors -- otherwise advance to the next bin
+        if (best_v > -1) {
+            vp_put_vector_in_bin(vp_prob, best_v, b);
+            num_unmapped_vectors--;
+            unmapped_vectors[best_v_idx] = 
+                unmapped_vectors[num_unmapped_vectors];
+        } else {
+            b++;
         }
 
-        free(lists[0]);
-        free(lists);
     }
 
     for (i = 0; i < vp_prob->num_vectors; i++) {
         free(vector_keys[i]);
     }
 
-    free(vector_keys);
-
-    return (j >= vp_prob->num_bins) ? 1 : 0;
+    return num_unmapped_vectors;
 }
     
 /* solve_vp_instance() 
@@ -634,23 +459,27 @@ int solve_vp_problem(vp_problem vp_prob, char *vp_algorithm)
     } else if (!strcmp(vp_algorithm, "BFDSUM")) {
         retval = solve_vp_problem_FITD(vp_prob, "BEST", "SUM");
     } else if (!strcmp(vp_algorithm, "CPMAX")) {
-        retval = solve_vp_problem_MCB(vp_prob, 2, "CP", "MAX");
+        retval = solve_vp_problem_MCB(vp_prob, 2, 1, rcmp_vp_vector_idxs_max);
     } else if (!strcmp(vp_algorithm, "CPSUM")) {
-        retval = solve_vp_problem_MCB(vp_prob, 2, "CP", "SUM");
+        retval = solve_vp_problem_MCB(vp_prob, 2, 1, rcmp_vp_vector_idxs_sum);
     } else if (!strcmp(vp_algorithm, "CPMAXRATIO")) {
-        retval = solve_vp_problem_MCB(vp_prob, 2, "CP", "MAXRATIO");
+        retval = solve_vp_problem_MCB(vp_prob, 2, 1, 
+            rcmp_vp_vector_idxs_maxratio);
     } else if (!strcmp(vp_algorithm, "CPMAXDIFF")) {
-        retval = solve_vp_problem_MCB(vp_prob, 2, "CP", "MAXDIFF");
+        retval = solve_vp_problem_MCB(vp_prob, 2, 1, 
+            rcmp_vp_vector_idxs_maxdiff);
     } else if (!strcmp(vp_algorithm, "PPMAX")) {
-        retval = solve_vp_problem_MCB(vp_prob, 2, "PP", "MAX");
+        retval = solve_vp_problem_MCB(vp_prob, 2, 0, rcmp_vp_vector_idxs_max);
     } else if (!strcmp(vp_algorithm, "PPSUM")) {
-        retval = solve_vp_problem_MCB(vp_prob, 2, "PP", "SUM");
+        retval = solve_vp_problem_MCB(vp_prob, 2, 0, rcmp_vp_vector_idxs_sum);
     } else if (!strcmp(vp_algorithm, "PPMAXRATIO")) {
-        retval = solve_vp_problem_MCB(vp_prob, 2, "PP", "MAXRATIO");
+        retval = solve_vp_problem_MCB(vp_prob, 2, 0,
+            rcmp_vp_vector_idxs_maxratio);
     } else if (!strcmp(vp_algorithm, "PPMAXDIFF")) {
-        retval = solve_vp_problem_MCB(vp_prob, 2, "PP", "MAXDIFF");
+        retval = solve_vp_problem_MCB(vp_prob, 2, 0, 
+            rcmp_vp_vector_idxs_maxdiff);
     } else {
-        fprintf(stderr,"Unknown vp_algorithm '%s'\n",vp_algorithm);
+        fprintf(stderr, "Unknown vp_algorithm '%s'\n", vp_algorithm);
         exit(1);
     }
     return retval;
