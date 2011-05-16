@@ -362,21 +362,20 @@ flexsched_solution RRNZ_scheduler(
     return flex_soln;
 }
 
-# if 0
 glp_prob *create_allocation_lp(flexsched_solution flex_soln, float minyield) 
 {
     glp_prob *prob;
     int i, j, k;
-    int row, elt;
-    int ia[LP_NUM_ELTS+1];    // array of matrix element row indicies
-    int ja[LP_NUM_ELTS+1];    // array of matrix element column indicies
-    double ra[LP_NUM_ELTS+1]; // array of matrix element coefficients
+    int ia[(flex_prob->num_fluid+1)*flex_prob->num_services+2];
+    int ja[(flex_prob->num_fluid+1)*flex_prob->num_services+2];
+    double ra[(flex_prob->num_fluid+1)*flex_prob->num_services+2];
+    double rowmin;
 
     // Create GLPK problem
     prob = glp_create_prob();
 
-    glp_add_cols(prob, flex_soln->num_services + 1);
-    glp_add_rows(prob, flex_soln->num_servers * flex_soln->num_fluid + 1);
+    glp_add_cols(prob, flex_prob->num_services + 1);
+    glp_add_rows(prob, flex_prob->num_servers * flex_prob->num_fluid + 1);
 
 #ifdef DEBUG
     glp_set_prob_name(prob, "task allocation problem");
@@ -387,7 +386,7 @@ glp_prob *create_allocation_lp(flexsched_solution flex_soln, float minyield)
     for (j = 0; j < flex_prob->num_servers; j++) {
         for (k = 0; k < flex_prob->num_fluid; k++) {
             glp_set_row_bnds(prob, flex_prob->num_fluid*j+k+1, 
-                GLP_UP, LP_IGNORE, flex_prob->fluid_capacities[j][k]);
+                GLP_UP, LP_IGNORE, flex_prob->fluid_capacities[j][k] - EPSILON);
         }
     }
 
@@ -396,7 +395,7 @@ glp_prob *create_allocation_lp(flexsched_solution flex_soln, float minyield)
 #ifdef DEBUG
         char buffer[10];
         sprintf(buffer, "y_{%d}", i);
-        glp_set_col_name(prob, i, buffer);
+        glp_set_col_name(prob, i+1, buffer);
 #endif
         glp_set_col_kind(prob, i+1, GLP_CV);
         glp_set_col_bnds(prob, i+1, GLP_DB, 
@@ -409,25 +408,65 @@ glp_prob *create_allocation_lp(flexsched_solution flex_soln, float minyield)
         }
     }
 
-    glp_set_row_bnds(prob, flex_prob->num_services * flex_prob->num_fluid + 1, 
-        GLP_LO, flex_prob->num_services * minyield, LP_IGNORE);
-
+    rowmin = 0.0;
     for (i = 0; i < flex_prob->num_services; i++) {
-        ia[flex_prob->num_services * flex_prob->num_fluid + 1] = 
-            flex_prob->num_services * flex_prob->num_fluid + 1;
-        ja[flex_prob->num_services * flex_prob->num_fluid + 1] = i+1; 
-        ra[flex_prob->num_services * flex_prob->num_fluid + 1] = 1.0;
-        ia[elt] = row; ja[elt] = LP_OBJ_COL; 
-        ra[elt] = flex_prob->slas[i] - 1.0;
+        ia[flex_prob->num_services*flex_prob->num_fluid+i+1] = 
+            flex_prob->num_servers*flex_prob->num_fluid+1;
+        ja[flex_prob->num_services*flex_prob->num_fluid+i+1] = i+1; 
+        ra[flex_prob->num_services*flex_prob->num_fluid+i+1] = 
+            1.0 / (1.0 - flex_prob->slas[i]);
+        rowmin += flex_prob->slas[i] / (1.0 - flex_prob->slas[i]);
     }
 
+    glp_set_row_bnds(prob, flex_prob->num_servers * flex_prob->num_fluid + 1,
+        GLP_LO, rowmin, LP_IGNORE);
+
+    ia[(flex_prob->num_fluid+1)*flex_prob->num_services+1] =
+        flex_prob->num_servers*flex_prob->num_fluid+1;
+    ja[(flex_prob->num_fluid+1)*flex_prob->num_services+1] = 
+        flex_prob->num_services+1;
+    ra[(flex_prob->num_fluid+1)*flex_prob->num_services+1] = 
+        -1.0*flex_prob->num_services;
+
     // Set bounds for the min yield: between 0 and 1.0
-    glp_set_col_bnds(prob, flex_prob->num_services + 1, GLP_DB, minyield, 1.0);
+    glp_set_col_name(prob, flex_prob->num_services+1, "Y");
+    glp_set_col_bnds(prob, flex_prob->num_services+1, GLP_DB, minyield, 1.0);
     glp_set_obj_dir(prob, GLP_MAX);
-    glp_set_obj_coef(prob, flex_prob->num_services + 1, 1.0);
+    glp_set_obj_coef(prob, flex_prob->num_services+1, 1.0);
+
+    glp_load_matrix(prob, (flex_prob->num_fluid+1)*flex_prob->num_services+1, 
+        ia, ja, ra);
 
     return prob;
 
 }
-#endif
 
+void maximize_average_yield_given_minimum(
+    flexsched_solution flex_soln, float minyield)
+{
+    int i;
+
+    glp_prob *prob = create_allocation_lp(flex_soln, minyield);
+
+    if (solve_linear_program(prob, RATIONAL)) return;
+
+    float loads[flex_prob->num_servers];
+    int j;
+    for (j = 0; j < flex_prob->num_servers; j++) {
+        loads[j] = 0.0;
+    }
+    for (i = 0; i < flex_prob->num_services; i++) {
+        flex_soln->scaled_yields[i] = glp_get_col_prim(prob, i+1);
+        loads[flex_soln->mapping[i]] += 
+            (flex_prob->slas[i] + 
+            flex_soln->scaled_yields[i] * (1.0 - flex_prob->slas[i])) * 
+            flex_prob->fluid_needs[i][0];
+        printf("%d %d %f %f %f\n", i, flex_soln->mapping[i],
+                flex_prob->fluid_needs[i][0], 
+                (flex_prob->slas[i] + 
+                flex_soln->scaled_yields[i] * (1.0 - flex_prob->slas[i])),
+                loads[flex_soln->mapping[i]]);
+    }
+
+    return;
+}

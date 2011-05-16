@@ -403,28 +403,9 @@ void maximize_minimum_yield(flexsched_solution flex_soln)
     return;
 }
 
-// FIXME: go over this from paper again and make sure you agree.
-void maximize_average_yield_on_server_given_minimum(
-    flexsched_solution flex_soln, int server, float minyield)
-{
-    int i, j;
-    float available_resources[flex_prob->num_fluid];
-
-    for (i = 0; i < flex_prob->num_services; i++) {
-        if (flex_soln->mapping[i] != server) continue;
-        flex_soln->scaled_yields[i] = minyield;
-    }
-
-    // FIXME: doesn't do anything yet...
-    /*
-    for (j = 0; j < flex_prob->num_fluid; j++) {
-        available_resources[j] = flex_prob->fluid_capacities[j] -
-            compute_load_on_server_in_dimension(flex_soln, server, "fluidmin", 
-                j);
-    */
-
-    return;
-}
+// FIXME: organizationally I don't know if it makes more sense to put this in
+// or linearprog.c
+void maximize_average_yield_given_minimum(flexsched_solution, float);
 
 void maximize_minimum_then_average_yield(flexsched_solution flex_soln)
 {
@@ -436,7 +417,7 @@ void maximize_minimum_then_average_yield(flexsched_solution flex_soln)
     }
     minyield = compute_minimum_yield(flex_soln);
     for (i = 0; i < flex_prob->num_servers; i++) {
-        maximize_average_yield_on_server_given_minimum(flex_soln, i, minyield);
+        maximize_average_yield_given_minimum(flex_soln, minyield);
     }
 
     return;
