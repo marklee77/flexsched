@@ -311,8 +311,8 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, int isCP,
 {
     int i, j;
 
-    int vector_dims[vp_prob->num_vectors][vp_prob->num_dims];
-    int bin_dims[vp_prob->num_dims];
+    int dim_perm[vp_prob->num_dims];
+    int vector_dims[vp_prob->num_vectors][w];
 
     int unmapped_vectors[vp_prob->num_vectors];
     int num_unmapped_vectors;
@@ -321,20 +321,24 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, int isCP,
 
     int bin_dim_positions[vp_prob->num_dims];
 
-    // stupid complicated rules for function calls to multidimensional arrays...
-    int *vector_keys[vp_prob->num_vectors];
+    int *v_perm, *best_perm, *tmp_perm;
 
-    // initialize unmapped vectors, vector keys, and vector dims
-    for (i = 0; i < vp_prob->num_vectors; i++) {
-        unmapped_vectors[i] = i;
-        vector_keys[i] = (int *)calloc(w, sizeof(int));
-        for (j = 0; j < vp_prob->num_dims; j++) vector_dims[i][j] = j;
-        qsort_r(vector_dims[i], vp_prob->num_dims, sizeof(int), 
-            vp_prob->vectors[i], rcmp_float_array_idxs);
+    // initialize dim_perm
+    for (j = 0; j < vp_prob->num_dims; j++) {
+        dim_perm[j] = j;
     }
 
-    // initialize bin dims
-    for (i = 0; i < vp_prob->num_dims; i++) bin_dims[i] = i;
+    // initialize unmapped vectors and vector dims
+    for (i = 0; i < vp_prob->num_vectors; i++) {
+        unmapped_vectors[i] = i;
+        qsort_r(dim_perm, vp_prob->num_dims, sizeof(int), 
+            vp_prob->vectors[i], rcmp_float_array_idxs);
+        for (j = 0; j < w; j++) vector_dims[i][j] = dim_perm[j];
+    }
+
+    // initialize pointers to v_perm and best_perm
+    v_perm = (int *)calloc(w, sizeof(int));
+    best_perm = (int *)calloc(w, sizeof(int));
 
     b = 0;
     num_unmapped_vectors = vp_prob->num_vectors;
@@ -366,35 +370,30 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, int isCP,
 
             // compute bin permutation
             // FIXME: in next version this will be reverse order by capacity...
-            qsort_r(bin_dims, vp_prob->num_dims, sizeof(int), 
+            qsort_r(dim_perm, vp_prob->num_dims, sizeof(int), 
                 vp_prob->loads[j], cmp_float_array_idxs);
-
-            /*
-            printf("bin dims: ");
-            for (j = 0; j < vp_prob->num_dims; j++) {
-                printf("%d ", bin_dims[j]);
-            }
-            printf("\n");
-            */
 
             // compute bin dim positions
             j = 0;
             if (isCP) { // CP treats first w positions as the same...
                 while (j < w) {
-                    bin_dim_positions[bin_dims[j]] = 0;
+                    bin_dim_positions[dim_perm[j]] = 0;
                     j++;
                 }
             }
             while (j < vp_prob->num_dims) {
-                bin_dim_positions[bin_dims[j]] = j;
+                bin_dim_positions[dim_perm[j]] = j;
                 j++;
             }
 
             // apply bin key inverse to best vector key to get how it permutes
             // the bin key in the first w elements...
             for (j = 0; j < w; j++) {
-                vector_keys[best_v][j] = 
-                    bin_dim_positions[vector_dims[best_v][j]];
+                best_perm[j] = bin_dim_positions[vector_dims[best_v][j]];
+            }
+
+            if (isCP) { // CP ignores position
+                qsort(best_perm, w, sizeof(int), cmp_ints);
             }
 
             // start with the current vector and look for the "best" one by the
@@ -408,28 +407,21 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, int isCP,
                 // apply bin key inverse to vector keys to get how they permute 
                 // the bin key in the first w elements...
                 for (j = 0; j < w; j++) 
-                    vector_keys[v][j] = bin_dim_positions[vector_dims[v][j]];
+                    v_perm[j] = bin_dim_positions[vector_dims[v][j]];
 
                 if (isCP) { // CP ignores position of the first w
-                    qsort(vector_keys[v], w, sizeof(int), cmp_ints);
+                    qsort(v_perm, w, sizeof(int), cmp_ints);
                 }
 
-                cmp_val = cmp_int_arrays_lex(w, vector_keys[v],
-                    vector_keys[best_v]);
-
-                /*
-                printf("( ");
-                for (j = 0; j < w; j++) printf("%d ", vector_keys[v][j]);
-                printf(") %s ( ", 
-                    (cmp_val < 0) ? "<" : ((cmp_val == 0) ? "=" : ">"));
-                for (j = 0; j < w; j++) printf("%d ", vector_keys[best_v][j]);
-                printf(")\n");
-                */
+                cmp_val = cmp_int_arrays_lex(w, v_perm, best_perm);
 
                 if (cmp_val > 0 || (0 == cmp_val && 
                     rcmp_vp_vector_idxs(vp_prob, &v, &best_v) < 0)) {
-                    best_v_idx = i;
                     best_v = v;
+                    best_v_idx = i;
+                    tmp_perm = best_perm;
+                    best_perm = v_perm;
+                    v_perm = tmp_perm;
                 }
 
             }
@@ -449,9 +441,8 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, int isCP,
 
     }
 
-    for (i = 0; i < vp_prob->num_vectors; i++) {
-        free(vector_keys[i]);
-    }
+    free(v_perm);
+    free(best_perm);
 
     return num_unmapped_vectors;
 }
