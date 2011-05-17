@@ -6,7 +6,7 @@
 
 /* A helper function to compute the thingies from
  * the Maruyama article, and puts them into the misc 
- * field of the vp_prob->vectors
+ * field of the vp_prob->items
  */
 void vp_compute_degrees_of_dominance(vp_problem vp_prob)
 {
@@ -23,10 +23,10 @@ void vp_compute_degrees_of_dominance(vp_problem vp_prob)
         degrees[i] /= vp_prob->num_bins;
     }
 
-    for (i = 0; i < vp_prob->num_vectors; i++) {
+    for (i = 0; i < vp_prob->num_items; i++) {
         vp_prob->misc[i] = 0.0;
         for (j = 0; j < vp_prob->num_dims; j++)
-            vp_prob->misc[i] += degrees[j] * vp_prob->vectors[i][j];
+            vp_prob->misc[i] += degrees[j] * vp_prob->items[i][j];
     }
 
     return;
@@ -43,33 +43,36 @@ void vp_compute_degrees_of_dominance(vp_problem vp_prob)
 int solve_vp_problem_FITD(
     vp_problem vp_prob, int fit_type, 
 #ifdef NO_QSORT_R
-    int (*rcmp_vp_vector_idxs)(const void *, const void *),
+    int (*rcmp_vector_array_idxs)(const void *, const void *),
 #else
-    int (*rcmp_vp_vector_idxs)(void *, const void *, const void *)
+    int (*rcmp_vector_array_idxs)(void *, const void *, const void *)
 #endif
     )
 {
     int i, j, k;
     int (*compar)(void *, const void *, const void *);
-    int sortmap[vp_prob->num_vectors];
+    int sortmap[vp_prob->num_items];
     float sumloads[vp_prob->num_bins];
+    struct vector_array_t va;
+    va.num_dims = vp_prob->num_dims;
 
     // set up vector sort map
-    for (i = 0; i < vp_prob->num_vectors; i++) sortmap[i] = i;
-    qsort_r(sortmap, vp_prob->num_vectors, sizeof(int), vp_prob, 
-        rcmp_vp_vector_idxs);
+    for (i = 0; i < vp_prob->num_items; i++) sortmap[i] = i;
+    va.vectors = vp_prob->items;
+    qsort_r(sortmap, vp_prob->num_items, sizeof(int), &va, 
+        rcmp_vector_array_idxs);
 
     // Place vectors into bins
     switch(fit_type) {
         case FIRST_FIT:
-        for (i = 0; i < vp_prob->num_vectors; i++) {
+        for (i = 0; i < vp_prob->num_items; i++) {
             for (j = 0; j < vp_prob->num_bins; j++)
                 if (!vp_put_vector_in_bin_safe(vp_prob, sortmap[i], j)) break;
             if (j >= vp_prob->num_bins) return 1;
         }
         break;
         case BEST_FIT:
-        for (i = 0; i < vp_prob->num_vectors; i++) {
+        for (i = 0; i < vp_prob->num_items; i++) {
             for (j = 0; j < vp_prob->num_bins; j++) {
                 if (vp_vector_can_fit_in_bin(vp_prob, sortmap[i], j)) {
                     sumloads[j] = vp_compute_sum_load(vp_prob, j);
@@ -83,7 +86,7 @@ int solve_vp_problem_FITD(
         }
         break;
         default:
-        fprintf(stderr,"Invalid VP fit type '%s'\n",fit_type);
+        fprintf(stderr, "Invalid VP fit type '%d'\n", fit_type);
         exit(1);
     }
 
@@ -95,18 +98,18 @@ int solve_vp_problem_FITD(
 // with pointers since we don't sort the vectors with qsort anymore...
 int solve_vp_problem_MCB(vp_problem vp_prob, int w, int isCP, 
 #ifdef NO_QSORT_R
-    int (*rcmp_vp_vector_idxs)(const void *, const void *)
+    int (*rcmp_vector_array_idxs)(const void *, const void *)
 #else
-    int (*rcmp_vp_vector_idxs)(void *, const void *, const void *)
+    int (*rcmp_vector_array_idxs)(void *, const void *, const void *)
 #endif
     )
 {
     int i, j;
 
     int dim_perm[vp_prob->num_dims];
-    int vector_dims[vp_prob->num_vectors][w];
+    int vector_dims[vp_prob->num_items][w];
 
-    int unmapped_vectors[vp_prob->num_vectors];
+    int unmapped_vectors[vp_prob->num_items];
     int num_unmapped_vectors;
 
     int b, v, best_v, best_v_idx, cmp_val;
@@ -115,16 +118,20 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, int isCP,
 
     int *v_perm, *best_perm, *tmp_perm;
 
+    struct vector_array_t va;
+
+    va.num_dims = vp_prob->num_dims;
+
     // initialize dim_perm
     for (j = 0; j < vp_prob->num_dims; j++) {
         dim_perm[j] = j;
     }
 
     // initialize unmapped vectors and vector dims
-    for (i = 0; i < vp_prob->num_vectors; i++) {
+    for (i = 0; i < vp_prob->num_items; i++) {
         unmapped_vectors[i] = i;
         qsort_r(dim_perm, vp_prob->num_dims, sizeof(int), 
-            vp_prob->vectors[i], rcmp_float_array_idxs);
+            vp_prob->items[i], rcmp_float_array_idxs);
         for (j = 0; j < w; j++) vector_dims[i][j] = dim_perm[j];
     }
 
@@ -133,7 +140,7 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, int isCP,
     best_perm = (int *)calloc(w, sizeof(int));
 
     b = 0;
-    num_unmapped_vectors = vp_prob->num_vectors;
+    num_unmapped_vectors = vp_prob->num_items;
     while (b < vp_prob->num_bins && num_unmapped_vectors > 0) {
 
         best_v = -1;
@@ -207,13 +214,14 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, int isCP,
 
                 cmp_val = cmp_int_arrays_lex(w, v_perm, best_perm);
 
+                va.vectors = vp_prob->items;
 #ifdef NO_QSORT_R
-                global_qsort_vptr = vp_prob;
+                global_qsort_vptr = &va;
                 if (cmp_val > 0 || (0 == cmp_val && 
-                    rcmp_vp_vector_idxs(&v, &best_v) < 0))
+                    rcmp_vector_array_idxs(&v, &best_v) < 0))
 #else
                 if (cmp_val > 0 || (0 == cmp_val && 
-                    rcmp_vp_vector_idxs(vp_prob, &v, &best_v) < 0))
+                    rcmp_vector_array_idxs(&va, &v, &best_v) < 0))
 #endif
                 {
                     best_v = v;
@@ -254,42 +262,46 @@ int solve_vp_problem(vp_problem vp_prob, char *vp_algorithm)
     int retval;
     if (!strcmp(vp_algorithm, "FFDLEX")) {
         retval = solve_vp_problem_FITD(vp_prob, FIRST_FIT, 
-            rcmp_vp_vector_idxs_lex);
+            rcmp_vector_array_idxs_lex);
     } else if (!strcmp(vp_algorithm, "FFDMAX")) {
         retval = solve_vp_problem_FITD(vp_prob, FIRST_FIT, 
-            rcmp_vp_vector_idxs_max);
+            rcmp_vector_array_idxs_max);
     } else if (!strcmp(vp_algorithm, "FFDSUM")) {
         retval = solve_vp_problem_FITD(vp_prob, FIRST_FIT, 
-            rcmp_vp_vector_idxs_sum);
+            rcmp_vector_array_idxs_sum);
     } else if (!strcmp(vp_algorithm, "BFDLEX")) {
         retval = solve_vp_problem_FITD(vp_prob, BEST_FIT, 
-            rcmp_vp_vector_idxs_lex);
+            rcmp_vector_array_idxs_lex);
     } else if (!strcmp(vp_algorithm, "BFDMAX")) {
         retval = solve_vp_problem_FITD(vp_prob, BEST_FIT, 
-            rcmp_vp_vector_idxs_max);
+            rcmp_vector_array_idxs_max);
     } else if (!strcmp(vp_algorithm, "BFDSUM")) {
         retval = solve_vp_problem_FITD(vp_prob, BEST_FIT, 
-            rcmp_vp_vector_idxs_sum);
+            rcmp_vector_array_idxs_sum);
     } else if (!strcmp(vp_algorithm, "CPMAX")) {
-        retval = solve_vp_problem_MCB(vp_prob, 1, 1, rcmp_vp_vector_idxs_max);
+        retval = solve_vp_problem_MCB(vp_prob, 1, 1, 
+            rcmp_vector_array_idxs_max);
     } else if (!strcmp(vp_algorithm, "CPSUM")) {
-        retval = solve_vp_problem_MCB(vp_prob, 1, 1, rcmp_vp_vector_idxs_sum);
+        retval = solve_vp_problem_MCB(vp_prob, 1, 1, 
+            rcmp_vector_array_idxs_sum);
     } else if (!strcmp(vp_algorithm, "CPMAXRATIO")) {
         retval = solve_vp_problem_MCB(vp_prob, 1, 1, 
-            rcmp_vp_vector_idxs_maxratio);
+            rcmp_vector_array_idxs_maxratio);
     } else if (!strcmp(vp_algorithm, "CPMAXDIFF")) {
         retval = solve_vp_problem_MCB(vp_prob, 1, 1, 
-            rcmp_vp_vector_idxs_maxdiff);
+            rcmp_vector_array_idxs_maxdiff);
     } else if (!strcmp(vp_algorithm, "PPMAX")) {
-        retval = solve_vp_problem_MCB(vp_prob, 1, 0, rcmp_vp_vector_idxs_max);
+        retval = solve_vp_problem_MCB(vp_prob, 1, 0, 
+            rcmp_vector_array_idxs_max);
     } else if (!strcmp(vp_algorithm, "PPSUM")) {
-        retval = solve_vp_problem_MCB(vp_prob, 1, 0, rcmp_vp_vector_idxs_sum);
+        retval = solve_vp_problem_MCB(vp_prob, 1, 0, 
+            rcmp_vector_array_idxs_sum);
     } else if (!strcmp(vp_algorithm, "PPMAXRATIO")) {
         retval = solve_vp_problem_MCB(vp_prob, 1, 0,
-            rcmp_vp_vector_idxs_maxratio);
+            rcmp_vector_array_idxs_maxratio);
     } else if (!strcmp(vp_algorithm, "PPMAXDIFF")) {
         retval = solve_vp_problem_MCB(vp_prob, 1, 0, 
-            rcmp_vp_vector_idxs_maxdiff);
+            rcmp_vector_array_idxs_maxdiff);
     } else {
         fprintf(stderr, "Unknown vp_algorithm '%s'\n", vp_algorithm);
         exit(1);
