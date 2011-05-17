@@ -415,7 +415,7 @@ flexsched_solution METAGREEDYLIGHT_scheduler(char *S, char *P, char *ignore)
 
         // If worked and improved, then great
         if (curr_soln->success) {
-            flex_soln->success;
+            flex_soln->success = 1;
 
             // compute minimum yield
             minyield = compute_minimum_yield(curr_soln);
