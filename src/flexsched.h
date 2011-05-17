@@ -79,19 +79,6 @@ typedef struct flexsched_solution_struct {
      */
 } *flexsched_solution;
 
-typedef struct vp_problem_struct {
-    int num_dims;
-    int num_vectors;
-    int num_bins;
-    float **vectors;
-    float **bin_capacities;
-    // unlike with flex_prob, we just store the solution in the problem
-    int *mapping;
-    float **loads; // useful scratch variable
-    float *misc; // scratch -- inelegant but useful...
-} *vp_problem; 
-
-
 #if 0
 /* A binary counter */
 struct binary_counter_t {

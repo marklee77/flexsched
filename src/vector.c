@@ -1,6 +1,9 @@
 #include "flexsched.h"
 #include "vector.h"
 
+#define FIRST_FIT 0
+#define BEST_FIT 1
+
 /* A helper function to compute the thingies from
  * the Maruyama article, and puts them into the misc 
  * field of the vp_prob->vectors
@@ -38,39 +41,34 @@ void vp_compute_degrees_of_dominance(vp_problem vp_prob)
  * Returns the number of used bins
  */
 int solve_vp_problem_FITD(
-    vp_problem vp_prob, const char *fit_type, const char *sort_type)
+    vp_problem vp_prob, int fit_type, 
+#ifdef NO_QSORT_R
+    int (*rcmp_vp_vector_idxs)(const void *, const void *),
+#else
+    int (*rcmp_vp_vector_idxs)(void *, const void *, const void *)
+#endif
+    )
 {
     int i, j, k;
     int (*compar)(void *, const void *, const void *);
     int sortmap[vp_prob->num_vectors];
+    float sumloads[vp_prob->num_bins];
 
     // set up vector sort map
     for (i = 0; i < vp_prob->num_vectors; i++) sortmap[i] = i;
-
-    // Sort the vectors in the instance according to the sort type
-    if (!strcmp(sort_type, "LEX")) {
-        qsort_r(sortmap, vp_prob->num_vectors, sizeof(int), vp_prob,
-            rcmp_vp_vector_idxs_lex);
-    } else if (!strcmp(sort_type, "MAX")) {
-        qsort_r(sortmap, vp_prob->num_vectors, sizeof(int), vp_prob,
-            rcmp_vp_vector_idxs_max);
-    } else if (!strcmp(sort_type, "SUM")) {
-        qsort_r(sortmap, vp_prob->num_vectors, sizeof(int), vp_prob,
-            rcmp_vp_vector_idxs_sum);
-    } else if (strcmp(sort_type, "NONE")) {
-        fprintf(stderr,"Invalid VP sort type '%s'\n",sort_type);
-        exit(1);
-    }
+    qsort_r(sortmap, vp_prob->num_vectors, sizeof(int), vp_prob, 
+        rcmp_vp_vector_idxs);
 
     // Place vectors into bins
-    if (!strcmp(fit_type, "FIRST")) { // First Fit
+    switch(fit_type) {
+        case FIRST_FIT:
         for (i = 0; i < vp_prob->num_vectors; i++) {
             for (j = 0; j < vp_prob->num_bins; j++)
                 if (!vp_put_vector_in_bin_safe(vp_prob, sortmap[i], j)) break;
             if (j >= vp_prob->num_bins) return 1;
         }
-    } else if (!strcmp(fit_type, "BEST")) {
-        float sumloads[vp_prob->num_bins];
+        break;
+        case BEST_FIT:
         for (i = 0; i < vp_prob->num_vectors; i++) {
             for (j = 0; j < vp_prob->num_bins; j++) {
                 if (vp_vector_can_fit_in_bin(vp_prob, sortmap[i], j)) {
@@ -83,7 +81,8 @@ int solve_vp_problem_FITD(
             if (sumloads[j] < 0.0 || 
                 vp_put_vector_in_bin_safe(vp_prob, sortmap[i], j)) return 1;
         }
-    } else {
+        break;
+        default:
         fprintf(stderr,"Invalid VP fit type '%s'\n",fit_type);
         exit(1);
     }
@@ -254,17 +253,23 @@ int solve_vp_problem(vp_problem vp_prob, char *vp_algorithm)
 {
     int retval;
     if (!strcmp(vp_algorithm, "FFDLEX")) {
-        retval = solve_vp_problem_FITD(vp_prob, "FIRST", "LEX");
+        retval = solve_vp_problem_FITD(vp_prob, FIRST_FIT, 
+            rcmp_vp_vector_idxs_lex);
     } else if (!strcmp(vp_algorithm, "FFDMAX")) {
-        retval = solve_vp_problem_FITD(vp_prob, "FIRST", "MAX");
+        retval = solve_vp_problem_FITD(vp_prob, FIRST_FIT, 
+            rcmp_vp_vector_idxs_max);
     } else if (!strcmp(vp_algorithm, "FFDSUM")) {
-        retval = solve_vp_problem_FITD(vp_prob, "FIRST", "SUM");
+        retval = solve_vp_problem_FITD(vp_prob, FIRST_FIT, 
+            rcmp_vp_vector_idxs_sum);
     } else if (!strcmp(vp_algorithm, "BFDLEX")) {
-        retval = solve_vp_problem_FITD(vp_prob, "BEST", "LEX");
+        retval = solve_vp_problem_FITD(vp_prob, BEST_FIT, 
+            rcmp_vp_vector_idxs_lex);
     } else if (!strcmp(vp_algorithm, "BFDMAX")) {
-        retval = solve_vp_problem_FITD(vp_prob, "BEST", "MAX");
+        retval = solve_vp_problem_FITD(vp_prob, BEST_FIT, 
+            rcmp_vp_vector_idxs_max);
     } else if (!strcmp(vp_algorithm, "BFDSUM")) {
-        retval = solve_vp_problem_FITD(vp_prob, "BEST", "SUM");
+        retval = solve_vp_problem_FITD(vp_prob, BEST_FIT, 
+            rcmp_vp_vector_idxs_sum);
     } else if (!strcmp(vp_algorithm, "CPMAX")) {
         retval = solve_vp_problem_MCB(vp_prob, 1, 1, rcmp_vp_vector_idxs_max);
     } else if (!strcmp(vp_algorithm, "CPSUM")) {

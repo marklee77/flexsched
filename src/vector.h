@@ -2,6 +2,18 @@
 #ifndef VECTOR_H
 #define VECTOR_H
 
+typedef struct vp_problem_struct {
+    int num_dims;
+    int num_vectors;
+    int num_bins;
+    float **vectors;
+    float **bin_capacities;
+    // unlike with flex_prob, we just store the solution in the problem
+    int *mapping;
+    float **loads; // useful scratch variable
+    float *misc; // scratch -- inelegant but useful...
+} *vp_problem; 
+
 // function prototypes
 vp_problem new_vp_problem(float);
 void free_vp_problem(vp_problem);
