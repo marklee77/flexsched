@@ -278,11 +278,9 @@ int main(int argc, char *argv[])
                 exit(1);
             }
 
-            // FIXME: maybe we get this whole optimized/non-optimized thing later?
-            // maximize_average_yield()
             non_optimized_average_yield = compute_average_yield(flex_soln);
             non_optimized_utilization = compute_utilization(flex_soln);
-            //maximize_average_yield(flex_soln);
+            maximize_minimum_then_average_yield(flex_soln);
 
             // Re-Sanity check the allocation
             if (sanity_check(flex_soln)) {

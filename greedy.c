@@ -337,6 +337,7 @@ flexsched_solution GREEDY_scheduler(char *S, char *P, char *ignore)
     // Map each service to a particular host
     GREEDY_compute_mapping(P, sortmap, flex_soln);
 
+    // greedy has to do this since it doesn't have a concept of allocation
     if (flex_soln->success) {
         maximize_minimum_then_average_yield(flex_soln);
     }

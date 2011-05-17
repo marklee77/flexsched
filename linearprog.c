@@ -502,7 +502,6 @@ flexsched_solution MILP_scheduler(
     }
 
     flex_soln->success = 1;
-    maximize_minimum_then_average_yield(flex_soln);
     return flex_soln;
 }
 
@@ -518,6 +517,7 @@ void LPROUNDING_scheduler(
     float x, total_weight, select_over_weight;
     double val;
     int feasible_servers[flex_prob->num_servers];
+    float yields[flex_prob->num_servers];
     int num_feasible_servers;
 
     // Create the placement problem in rational mode
@@ -544,12 +544,19 @@ void LPROUNDING_scheduler(
 #ifdef CPLEX
             CPXgetx(env, lp, &val, LP_E_IJ_COL, LP_E_IJ_COL);
 #else
-            val = glp_mip_col_val(prob, LP_E_IJ_COL);
+            val = glp_get_col_prim(prob, LP_E_IJ_COL);
 #endif
+            printf("%f\n", val);
             x = MAX(val, min_weight);
             if (service_can_fit_on_server_fast(i, j) && x > 0.0) {
                 feasible_servers[num_feasible_servers] = j;
                 weights[num_feasible_servers] = x;
+#ifdef CPLEX
+                CPXgetx(env, lp, &val, LP_Y_IJ_COL, LP_Y_IJ_COL);
+#else
+                val = glp_get_col_prim(prob, LP_Y_IJ_COL);
+#endif
+                yields[num_feasible_servers] = val;
                 total_weight += x;
                 num_feasible_servers++;
             }
@@ -571,13 +578,15 @@ void LPROUNDING_scheduler(
 
         // set the mappings appropriately
         flex_soln->mapping[i] = feasible_servers[j];
+        flex_soln->scaled_yields[i] = yields[j];
         add_service_load_to_server(i, feasible_servers[j]);
-
 
     }
 
     free_global_server_loads();
     flex_soln->success = 1;
+    // otherwise rounding gives bad values...
+    // FIXME: seems like it *should* work without this...
     maximize_minimum_then_average_yield(flex_soln);
     return;
 }
