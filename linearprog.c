@@ -36,7 +36,8 @@
     (5+(flex_prob->num_rigid)+(flex_prob->num_fluid))+(flex_prob->num_services))
 
 #ifdef CPLEX
-// CPLEX does zero indexed rows/cols
+
+// CPLEX does zero indexed rows/cols, unlike GLPK
 #define LP_E_IJ_COL ((flex_prob->num_servers)*i+j)
 #define LP_Y_IJ_COL ((flex_prob->num_servers)*((flex_prob->num_services)+i)+j)
 #define LP_OBJ_COL  (2*(flex_prob->num_services)*(flex_prob->num_servers))
@@ -49,68 +50,54 @@ int create_placement_lp(int rational, CPXENVptr *retenv, CPXLPptr *retlp)
     CPXLPptr lp = NULL;
     int status = 0;
     int i, j, k;
-    double obj, lb, ub;
+    double obj, bound, range;
     int row, elt;
-    int ia[LP_NUM_ELTS+1];    // array of matrix element row indicies
-    int ja[LP_NUM_ELTS+1];    // array of matrix element column indicies
-    double ra[LP_NUM_ELTS+1]; // array of matrix element coefficients
+    int ia[LP_NUM_ELTS];    // array of matrix element row indicies
+    int ja[LP_NUM_ELTS];    // array of matrix element column indicies
+    double ra[LP_NUM_ELTS]; // array of matrix element coefficients
     char type;
-    char buffer[10];
 
     *retenv = NULL;
     *retlp = NULL; 
 
     // create CPLEX problem
     env = CPXopenCPLEX (&status);
-
-    if ( env == NULL ) {
-        char  errmsg[1024];
+    if (NULL == env) {
         fprintf (stderr, "Could not open CPLEX environment.\n");
-        CPXgeterrorstring (env, status, errmsg);
-        fprintf (stderr, "%s", errmsg);
         return 1;
     }
   
-    /* Turn on output to the screen */
-    status = CPXsetintparam (env, CPX_PARAM_SCRIND, CPX_ON);
+#ifdef DEBUG
+    // turn on output
+    status = CPXsetintparam(env, CPX_PARAM_SCRIND, CPX_ON);
     if ( status ) {
         fprintf (stderr,
                  "Failure to turn on screen indicator, error %d.\n", status);
         return 1;
     }
-  
-    /* Turn on data checking */
-    status = CPXsetintparam (env, CPX_PARAM_DATACHECK, CPX_ON);
+    // Turn on data checking
+    status = CPXsetintparam(env, CPX_PARAM_DATACHECK, CPX_ON);
     if ( status ) {
         fprintf (stderr, 
             "Failure to turn on data checking, error %d.\n", status);
         return 1; 
     }
-      
-    /* Create the problem. */
-#ifdef DEBUG
-#define LP_PROB_NAME "task placement problem"
-#else
-#define LP_PROB_NAME NULL
 #endif
-    lp = CPXcreateprob (env, &status, LP_PROB_NAME);
 
+    // create the problem
+    lp = CPXcreateprob(env, &status, "task placement problem");
 
     if ( lp == NULL ) {
         fprintf (stderr, "Failed to create LP.\n");
         return 1;
     }  
 
-#ifdef DEBUG
-#define LP_COL_NAME &buffer
-#else
-#define LP_COL_NAME NULL
-#endif
-
-    // Set bounds for the e_ij: binary if !rational
+    // default objective coefficient and upper/lower bounds for most variables
     obj = 0.0;
-    lb = 0.0;
-    ub = 1.0;
+    bound = 0.0;
+    range = 1.0;
+
+    // Add e_ij columns
     if (rational) {
         type = CPX_CONTINUOUS;
     } else {
@@ -118,40 +105,30 @@ int create_placement_lp(int rational, CPXENVptr *retenv, CPXLPptr *retlp)
     }
     for (i = 0; i < flex_prob->num_services; i++) {
         for (j = 0; j < flex_prob->num_servers; j++) {
-#ifdef DEBUG
-            sprintf(buffer, "e_{%d,%d}", i, j);
-#endif
-            CPXnewcols(env, lp, 1, &obj, &lb, &ub, &type, LP_COL_NAME);
+            CPXnewcols(env, lp, 1, &obj, &bound, &range, &type, NULL);
         }
     }
 
-    if (!rational) {
-        type = CPX_CONTINUOUS;
-    }
+    // Add y_ij columns
+    type = CPX_CONTINUOUS;
     for (i = 0; i < flex_prob->num_services; i++) {
         for (j = 0; j < flex_prob->num_servers; j++) {
-#ifdef DEBUG
-            sprintf(buffer, "e_{%d,%d}", i, j);
-#endif
-            CPXnewcols(env, lp, 1, &obj, &lb, &ub, &type, LP_COL_NAME);
+            CPXnewcols(env, lp, 1, &obj, &bound, &range, &type, NULL);
         }
     }
-#ifdef DEBUG
-            sprintf(buffer, "Y");
-#endif
 
-    // objective value
+    // objective column
     obj = 1.0;
-    CPXnewcols(env, lp, 1, &obj, &lb, &ub, &type, LP_COL_NAME);
+    CPXnewcols(env, lp, 1, &obj, &bound, &range, &type, NULL);
 
     elt = 0; // element counter
     row = 0; // row counter
 
     //  (A) for all i: sum_j e_ij = 1
-    type = 'E'
-    lb = 1.0;
+    type = 'E';
+    bound = 1.0;
     for (i = 0; i < flex_prob->num_services; i++) {
-        CPXnewrows(env, lp, 1, &lb, &type, NULL, NULL);
+        CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
         for (j = 0; j < flex_prob->num_servers; j++) {
             ia[elt] = row; ja[elt] = LP_E_IJ_COL; ra[elt] = 1.0; elt++;
         }
@@ -160,11 +137,10 @@ int create_placement_lp(int rational, CPXENVptr *retenv, CPXLPptr *retlp)
 
     //  (B) for all i, j:  y_ih <= e_ij <=> y_ij - e_ij <= 0.0
     type = 'L';
-    ub = 0.0;
+    bound = 0.0;
     for (i = 0; i < flex_prob->num_services; i++) {
         for (j = 0; j < flex_prob->num_servers; j++) {
-            CPXnewrows(env, lp, 1, &ub, &type, NULL, NULL);
-            glp_set_row_bnds(prob, row, GLP_UP, LP_IGNORE, 0.0);
+            CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
             ia[elt] = row; ja[elt] = LP_Y_IJ_COL; ra[elt] = 1.0;  elt++;
             ia[elt] = row; ja[elt] = LP_E_IJ_COL; ra[elt] = -1.0; elt++;
             row++;
@@ -174,8 +150,8 @@ int create_placement_lp(int rational, CPXENVptr *retenv, CPXLPptr *retlp)
     type = 'G';
     //  (C) for all i: sum_h y_ih >= sla_i
     for (i = 0; i < flex_prob->num_services; i++) {
-        lb = flex_prob->slas[i];
-        CPXnewrows(env, lp, 1, &lb, &type, NULL, NULL);
+        bound = flex_prob->slas[i];
+        CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
         for (j = 0; j < flex_prob->num_servers; j++) {
             ia[elt] = row; ja[elt] = LP_Y_IJ_COL; ra[elt] = 1.0; elt++;
         }
@@ -183,11 +159,11 @@ int create_placement_lp(int rational, CPXENVptr *retenv, CPXLPptr *retlp)
     }
 
     type = 'L';
-    //  (D) for all h, r:  sum_i r_ij*e_ih <= 1
+    //  (D) for all h, r:  sum_i r_ij*e_ih <= capacity
     for (j = 0; j < flex_prob->num_servers; j++) {
         for (k = 0; k < flex_prob->num_rigid; k++) {
-            ub = flex_prob->rigid_capacities[j][k];
-            CPXnewrows(env, lp, 1, &ub, &type, NULL, NULL);
+            bound = flex_prob->rigid_capacities[j][k];
+            CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
             for (i = 0; i < flex_prob->num_services; i++) {
                 ia[elt] = row; ja[elt] = LP_E_IJ_COL; 
                 ra[elt] = flex_prob->rigid_needs[i][k]; elt++;
@@ -199,8 +175,8 @@ int create_placement_lp(int rational, CPXENVptr *retenv, CPXLPptr *retlp)
     //  (E) for all h, f:  sum_i r_ij*y_ih <= 1
     for (j = 0; j < flex_prob->num_servers; j++) {
         for (k = 0; k < flex_prob->num_fluid; k++) {
-            ub = flex_prob->fluid_capacities[j][k];
-            CPXnewrows(env, lp, 1, &ub, &type, NULL, NULL);
+            bound = flex_prob->fluid_capacities[j][k];
+            CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
             for (i = 0; i < flex_prob->num_services; i++) {
                 ia[elt] = row; ja[elt] = LP_Y_IJ_COL; 
                 ra[elt] = flex_prob->fluid_needs[i][k]; elt++;
@@ -209,11 +185,12 @@ int create_placement_lp(int rational, CPXENVptr *retenv, CPXLPptr *retlp)
         }
     }
 
+    type = 'G';
     //  (F) for all i: (sum_h y_ih - sla_i)/(1-sla_i) >= Y <=>
     //      sum_h y_ih + Y (sla_i - 1) >= sla_i 
     for (i = 0; i < flex_prob->num_services; i++) {
-        lb = flex_prob->slas[i];
-        CPXnewrows(env, lp, 1, &lb, &type, NULL, NULL);
+        bound = flex_prob->slas[i];
+        CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
         for (j = 0; j < flex_prob->num_servers; j++) {
             ia[elt] = row; ja[elt] = LP_Y_IJ_COL; ra[elt] = 1.0; elt++;
         }
@@ -248,11 +225,14 @@ int solve_linear_program(CPXENVptr env, CPXLPptr lp, int rational)
 }
 
 #else
+
+// GLPK does not use zero indexing, which seems like a waste.
 #define LP_E_IJ_COL ((flex_prob->num_servers)*i+j+1)
 #define LP_Y_IJ_COL ((flex_prob->num_servers)*((flex_prob->num_services)+i)+j+1)
 #define LP_OBJ_COL  (2*(flex_prob->num_services)*(flex_prob->num_servers)+1)
 
 #include <glpk.h>
+
 glp_prob *create_placement_lp(int rational) 
 {
     glp_prob *prob;
@@ -442,25 +422,17 @@ flexsched_solution LPBOUND_scheduler(
 {
     flexsched_solution flex_soln = new_flexsched_solution("LPBOUND");
     double objval;
+
+// create and solve LP, get objective value
 #ifdef CPLEX
     CPXENVptr env;
     CPXLPptr lp;
-    create_placement_lp(RATIONAL, &env, lp);
-#else
-    glp_prob *prob = create_placement_lp(RATIONAL);
-#endif
-
-#ifdef CPLEX
-    if (solve_linear_program(env, lp, RATIONAL)) {
-#else
-    if (solve_linear_program(prob, RATIONAL)) {
-#endif
-        return flex_soln;
-    }
-
-#ifdef CPLEX
+    create_placement_lp(RATIONAL, &env, &lp);
+    if (solve_linear_program(env, lp, RATIONAL)) return flex_soln;
     CPXgetobjval(env, lp, &objval);
 #else
+    glp_prob *prob = create_placement_lp(RATIONAL);
+    if (solve_linear_program(prob, RATIONAL)) return flex_soln;
     objval = glp_get_col_prim(prob, LP_OBJ_COL);
 #endif
 
@@ -488,27 +460,23 @@ flexsched_solution MILP_scheduler(
     flexsched_solution flex_soln = new_flexsched_solution("MILP");
 
 #ifdef CPLEX
-
     CPXENVptr env;
     CPXLPptr lp;
-    create_placement_lp(INTEGER, &env, lp);
+
+    create_placement_lp(INTEGER, &env, &lp);
 
     if (status = solve_linear_program(env, lp, INTEGER)) {
         return flex_soln;
     }
-
 #else
-    // Create the problem (in MILP form)
     glp_prob *prob = create_placement_lp(INTEGER);
 
-    // Solve it
     if (status = solve_linear_program(prob, INTEGER)) {
         if (status == 2) {
             strcat(flex_soln->misc_output, "T");
         }
         return flex_soln;
     }
-
 #endif
 
     // Retrieve the mapping
@@ -522,12 +490,12 @@ flexsched_solution MILP_scheduler(
             if (val >= 1.0 - EPSILON) {
                 flex_soln->mapping[i] = j;
 #ifdef CPLEX
-            CPXgetx(env, lp &val, LP_Y_IJ_COL, LP_Y_IJ_COL);
+            CPXgetx(env, lp, &val, LP_Y_IJ_COL, LP_Y_IJ_COL);
 #else
-            val = (glp_mip_col_val(prob, LP_Y_IJ_COL) - flex_prob->slas[i]) / 
-                (1 - flex_prob->slas[i]);
+            val = glp_mip_col_val(prob, LP_Y_IJ_COL);
 #endif
-                flex_soln->scaled_yields[i] = val;
+                flex_soln->scaled_yields[i] = 
+                    (val - flex_prob->slas[i]) / (1 - flex_prob->slas[i]);
                 break;
             }
         }
@@ -545,28 +513,24 @@ flexsched_solution MILP_scheduler(
 void LPROUNDING_scheduler(
     flexsched_solution flex_soln, float min_weight)
 {
-    glp_prob *prob;
     int i, j;
     float weights[flex_prob->num_servers];
     float x, total_weight, select_over_weight;
     double val;
+    int feasible_servers[flex_prob->num_servers];
+    int num_feasible_servers;
 
     // Create the placement problem in rational mode
     // and solve it to compute rational mappings,
     // adding an epsilon to zero values
 #ifdef CPLEX
-
     CPXENVptr env;
     CPXLPptr lp;
-    create_placement_lp(RATIONAL, &env, lp);
-
+    create_placement_lp(RATIONAL, &env, &lp);
     if (solve_linear_program(env, lp, INTEGER)) return;
-
 #else
-
-    prob = create_placement_lp(RATIONAL);
+    glp_prob *prob = create_placement_lp(RATIONAL);
     if (solve_linear_program(prob, RATIONAL)) return;
-
 #endif
 
     srand(RANDOM_SEED);
@@ -575,6 +539,7 @@ void LPROUNDING_scheduler(
     // For each service, pick on which server it lands
     for (i = 0; i < flex_prob->num_services; i++) {
         total_weight = 0.0;
+        num_feasible_servers = 0;
         for (j = 0; j < flex_prob->num_servers; j++) {
 #ifdef CPLEX
             CPXgetx(env, lp, &val, LP_E_IJ_COL, LP_E_IJ_COL);
@@ -583,28 +548,30 @@ void LPROUNDING_scheduler(
 #endif
             x = MAX(val, min_weight);
             if (service_can_fit_on_server_fast(i, j) && x > 0.0) {
-                weights[j] = x;
+                feasible_servers[num_feasible_servers] = j;
+                weights[num_feasible_servers] = x;
                 total_weight += x;
+                num_feasible_servers++;
             }
         }
 
         // If nobody works, forget it
-        if (total_weight <= 0.0) return;
+        if (!num_feasible_servers) return;
 
         // Pick a probability
         select_over_weight = total_weight * (rand() / (RAND_MAX + 1.0));
         x = 0.0;
-        for (j = 0; j < flex_prob->num_servers; j++) {
+        for (j = 0; j < num_feasible_servers; j++) {
             x += weights[j];
             // need to break to skip unfeasible servers...
             if (x >= select_over_weight) break;
         }
 
-        if (j >= flex_prob->num_servers) return;
+        if (j >= num_feasible_servers) return;
 
         // set the mappings appropriately
-        flex_soln->mapping[i] = j;
-        add_service_load_to_server(i, j);
+        flex_soln->mapping[i] = feasible_servers[j];
+        add_service_load_to_server(i, feasible_servers[j]);
 
 
     }
@@ -631,34 +598,150 @@ flexsched_solution RRNZ_scheduler(
     return flex_soln;
 }
 
-#ifdef CPLEX
-// FIXME: obviously not yet implemented...
-void maximize_average_yield_given_minimum(
-    flexsched_solution flex_soln, float minyield)
-{
-    int i;
+#define ALLOC_LP_NUM_COLS (flex_prob->num_services+1)
+#define ALLOC_LP_NUM_ROWS (flex_prob->num_servers*flex_prob->num_fluid+1)
+#define ALLOC_LP_NUM_ELTS ((flex_prob->num_fluid+1)*flex_prob->num_services+1)
 
-    for (i = 0; i < flex_prob->num_services; i++) {
-        flex_soln->scaled_yields[i] = minyield;
+#ifdef CPLEX
+// CPLEX uses 0 index cols/rows
+#define ALLOC_LP_Y_I_COL i
+#define ALLOC_LP_OBJ_COL (flex_prob->num_services)
+#define ALLOC_LP_ROW_JK (flex_prob->num_fluid*j+k)
+#define ALLOC_LP_OBJ_ROW (flex_prob->num_servers*flex_prob->num_fluid)
+
+int create_allocation_lp(flexsched_solution flex_soln, float minyield, 
+    CPXENVptr *retenv, CPXLPptr *retlp) 
+{
+    CPXENVptr env = NULL;
+    CPXLPptr lp = NULL;
+    int status = 0;
+    int i, j, k;
+    double obj, bound, range;
+    char type = CPX_CONTINUOUS;
+    int elt;
+    int ia[ALLOC_LP_NUM_ELTS+1];
+    int ja[ALLOC_LP_NUM_ELTS+1];
+    double ra[ALLOC_LP_NUM_ELTS+1];
+    double rowmin;
+
+    *retenv = NULL;
+    *retlp = NULL; 
+
+    // create CPLEX problem
+    env = CPXopenCPLEX (&status);
+    if (NULL == env) {
+        fprintf (stderr, "Could not open CPLEX environment.\n");
+        return 1;
+    }
+  
+#ifdef DEBUG
+    // turn on output
+    status = CPXsetintparam(env, CPX_PARAM_SCRIND, CPX_ON);
+    if ( status ) {
+        fprintf (stderr,
+                 "Failure to turn on screen indicator, error %d.\n", status);
+        return 1;
+    }
+    // Turn on data checking
+    status = CPXsetintparam(env, CPX_PARAM_DATACHECK, CPX_ON);
+    if ( status ) {
+        fprintf (stderr, 
+            "Failure to turn on data checking, error %d.\n", status);
+        return 1; 
+    }
+#endif
+
+    // create the problem
+    lp = CPXcreateprob(env, &status, "task allocation problem");
+
+    if ( lp == NULL ) {
+        fprintf (stderr, "Failed to create LP.\n");
+        return 1;
+    }  
+
+    // set fluid capacity constraints...
+    type = 'L';
+    for (j = 0; j < flex_prob->num_servers; j++) {
+        for (k = 0; k < flex_prob->num_fluid; k++) {
+            // not totally happy about the EPSILON, but it seems necessary to
+            // keep everything within bounds
+            bound = flex_prob->fluid_capacities[j][k] - EPSILON;
+            CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
+        }
     }
 
-    return;
+    elt = 1;
+
+    for (i = 0; i < flex_prob->num_services; i++) {
+    }
+
+    // fill in variables
+    // for all j,k sum_i (for i mapped to j) need_ik * y_i <= capacity_jk
+    // add y_i columns
+    obj = 0.0;
+    range = 1.0;
+    for (i = 0; i < flex_prob->num_services; i++) {
+        bound = flex_prob->slas[i] + minyield * (1.0 - flex_prob->slas[i]);
+        CPXnewcols(env, lp, 1, &obj, &bound, &range, &type, NULL);
+        j = flex_soln->mapping[i];
+        for (k = 0; k < flex_prob->num_fluid; k++) {
+            ia[elt] = ALLOC_LP_ROW_JK; ja[elt] = ALLOC_LP_Y_I_COL; 
+            ra[elt] = flex_prob->fluid_needs[i][k]; elt++;
+        }
+    }
+
+    // add objective column
+    obj = 1.0;
+    bound = minyield;
+    CPXnewcols(env, lp, 1, &obj, &bound, &range, &type, NULL);
+
+    rowmin = 0.0;
+    for (i = 0; i < flex_prob->num_services; i++) {
+        ia[elt] = ALLOC_LP_OBJ_ROW; ja[elt] = ALLOC_LP_Y_I_COL; 
+        ra[elt] = 1.0 / (1.0 - flex_prob->slas[i]); elt++;
+        rowmin += flex_prob->slas[i] / (1.0 - flex_prob->slas[i]);
+    }
+
+    // objective row
+    type = 'G';
+    CPXnewrows(env, lp, 1, &rowmin, &type, NULL, NULL);
+
+    ia[elt] = ALLOC_LP_OBJ_ROW; ja[elt] = ALLOC_LP_OBJ_COL;
+    ra[elt] = -1.0*flex_prob->num_services; elt++;
+
+    status = CPXchgcoeflist (env, lp, ALLOC_LP_NUM_ELTS, ia, ja, ra);
+    if (status) return 1;
+
+    CPXchgobjsen (env, lp, CPX_MAX);
+
+    *retenv = env;
+    *retlp = lp;
+
+    return 0;
 }
+
 #else
+
+#define ALLOC_LP_Y_I_COL (i+1)
+#define ALLOC_LP_OBJ_COL (flex_prob->num_services+1)
+#define ALLOC_LP_ROW_JK (flex_prob->num_fluid*j+k+1)
+#define ALLOC_LP_OBJ_ROW (flex_prob->num_servers*flex_prob->num_fluid+1)
+
 glp_prob *create_allocation_lp(flexsched_solution flex_soln, float minyield) 
 {
     glp_prob *prob;
     int i, j, k;
-    int ia[(flex_prob->num_fluid+1)*flex_prob->num_services+2];
-    int ja[(flex_prob->num_fluid+1)*flex_prob->num_services+2];
-    double ra[(flex_prob->num_fluid+1)*flex_prob->num_services+2];
+    int elt;
+    int ia[ALLOC_LP_NUM_ELTS+1];
+    int ja[ALLOC_LP_NUM_ELTS+1];
+    double ra[ALLOC_LP_NUM_ELTS+1];
     double rowmin;
 
     // Create GLPK problem
     prob = glp_create_prob();
 
-    glp_add_cols(prob, flex_prob->num_services + 1);
-    glp_add_rows(prob, flex_prob->num_servers * flex_prob->num_fluid + 1);
+    glp_add_cols(prob, ALLOC_LP_NUM_COLS);
+    glp_add_rows(prob, ALLOC_LP_NUM_ROWS);
 
 #ifdef DEBUG
     glp_set_prob_name(prob, "task allocation problem");
@@ -668,75 +751,83 @@ glp_prob *create_allocation_lp(flexsched_solution flex_soln, float minyield)
     // set fluid capacity constraints...
     for (j = 0; j < flex_prob->num_servers; j++) {
         for (k = 0; k < flex_prob->num_fluid; k++) {
-            glp_set_row_bnds(prob, flex_prob->num_fluid*j+k+1, 
+            // not totally happy about the EPSILON, but it seems necessary to
+            // keep everything within bounds
+            glp_set_row_bnds(prob, ALLOC_LP_ROW_JK, 
                 GLP_UP, LP_IGNORE, flex_prob->fluid_capacities[j][k] - EPSILON);
         }
     }
 
+    elt = 1;
+
     // fill in variables
+    // for all j,k sum_i (for i mapped to j) need_ik * y_i <= capacity_jk
     for (i = 0; i < flex_prob->num_services; i++) {
 #ifdef DEBUG
         char buffer[10];
         sprintf(buffer, "y_{%d}", i);
-        glp_set_col_name(prob, i+1, buffer);
+        glp_set_col_name(prob, ALLOC_LP_Y_I_COL, buffer);
 #endif
-        glp_set_col_kind(prob, i+1, GLP_CV);
-        glp_set_col_bnds(prob, i+1, GLP_DB, 
+        glp_set_col_kind(prob, ALLOC_LP_Y_I_COL, GLP_CV);
+        glp_set_col_bnds(prob, ALLOC_LP_Y_I_COL, GLP_DB, 
             flex_prob->slas[i] + minyield * (1.0 - flex_prob->slas[i]), 1.0);
         j = flex_soln->mapping[i];
         for (k = 0; k < flex_prob->num_fluid; k++) {
-            ia[flex_prob->num_fluid*i+k+1] = flex_prob->num_fluid*j+k+1;
-            ja[flex_prob->num_fluid*i+k+1] = i+1;
-            ra[flex_prob->num_fluid*i+k+1] = flex_prob->fluid_needs[i][k];
+            ia[elt] = ALLOC_LP_ROW_JK; ja[elt] = ALLOC_LP_Y_I_COL; 
+            ra[elt] = flex_prob->fluid_needs[i][k]; elt++;
         }
     }
 
+    // Set bounds for the min yield: between 0 and 1.0
+    glp_set_col_name(prob, ALLOC_LP_OBJ_COL, "Y");
+    glp_set_col_bnds(prob, ALLOC_LP_OBJ_COL, GLP_DB, minyield, 1.0);
+
     rowmin = 0.0;
     for (i = 0; i < flex_prob->num_services; i++) {
-        ia[flex_prob->num_services*flex_prob->num_fluid+i+1] = 
-            flex_prob->num_servers*flex_prob->num_fluid+1;
-        ja[flex_prob->num_services*flex_prob->num_fluid+i+1] = i+1; 
-        ra[flex_prob->num_services*flex_prob->num_fluid+i+1] = 
-            1.0 / (1.0 - flex_prob->slas[i]);
+        ia[elt] = ALLOC_LP_OBJ_ROW; ja[elt] = ALLOC_LP_Y_I_COL; 
+        ra[elt] = 1.0 / (1.0 - flex_prob->slas[i]); elt++;
         rowmin += flex_prob->slas[i] / (1.0 - flex_prob->slas[i]);
     }
 
-    glp_set_row_bnds(prob, flex_prob->num_servers * flex_prob->num_fluid + 1,
-        GLP_LO, rowmin, LP_IGNORE);
+    glp_set_row_bnds(prob, ALLOC_LP_OBJ_ROW, GLP_LO, rowmin, LP_IGNORE);
 
-    ia[(flex_prob->num_fluid+1)*flex_prob->num_services+1] =
-        flex_prob->num_servers*flex_prob->num_fluid+1;
-    ja[(flex_prob->num_fluid+1)*flex_prob->num_services+1] = 
-        flex_prob->num_services+1;
-    ra[(flex_prob->num_fluid+1)*flex_prob->num_services+1] = 
-        -1.0*flex_prob->num_services;
+    ia[elt] = ALLOC_LP_OBJ_ROW; ja[elt] = ALLOC_LP_OBJ_COL;
+    ra[elt] = -1.0*flex_prob->num_services; elt++;
 
-    // Set bounds for the min yield: between 0 and 1.0
-    glp_set_col_name(prob, flex_prob->num_services+1, "Y");
-    glp_set_col_bnds(prob, flex_prob->num_services+1, GLP_DB, minyield, 1.0);
     glp_set_obj_dir(prob, GLP_MAX);
-    glp_set_obj_coef(prob, flex_prob->num_services+1, 1.0);
+    glp_set_obj_coef(prob, ALLOC_LP_OBJ_COL, 1.0);
 
-    glp_load_matrix(prob, (flex_prob->num_fluid+1)*flex_prob->num_services+1, 
-        ia, ja, ra);
+    glp_load_matrix(prob, ALLOC_LP_NUM_ELTS, ia, ja, ra);
 
     return prob;
 
 }
+#endif
 
 void maximize_average_yield_given_minimum(
     flexsched_solution flex_soln, float minyield)
 {
     int i;
+    double val;
 
+#ifdef CPLEX
+    CPXENVptr env;
+    CPXLPptr lp;
+    create_allocation_lp(flex_soln, minyield, &env, &lp);
+    if (solve_linear_program(env, lp, RATIONAL)) return;
+#else
     glp_prob *prob = create_allocation_lp(flex_soln, minyield);
-
     if (solve_linear_program(prob, RATIONAL)) return;
+#endif
 
     for (i = 0; i < flex_prob->num_services; i++) {
-        flex_soln->scaled_yields[i] = glp_get_col_prim(prob, i+1);
+#ifdef CPLEX
+        CPXgetx(env, lp, &val, ALLOC_LP_Y_I_COL, ALLOC_LP_Y_I_COL);
+#else
+        val = glp_get_col_prim(prob, ALLOC_LP_Y_I_COL);
+#endif
+        flex_soln->scaled_yields[i] = val;
     }
 
     return;
 }
-#endif

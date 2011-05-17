@@ -1,5 +1,12 @@
 #include "flexsched.h"
 
+#ifdef NO_QSORT_R
+void *global_qsort_vptr;
+#define qsort_r(base, nel, width, thunk, compar) global_qsort_vptr = thunk; \
+    qsort(base, nel, width, compar);
+#endif
+
+
 vp_problem new_vp_problem(float yield) 
 {
     int i, j;
@@ -99,9 +106,15 @@ float vp_compute_sum_load(vp_problem vp_prob, int b)
 }
 
 // compare lexicographically
+#ifdef NO_QSORT_R
+int rcmp_vp_vector_idxs_lex(const void *x_ptr, const void *y_ptr)
+{
+    vp_problem vp_prob = (vp_problem)global_qsort_vptr;
+#else
 int rcmp_vp_vector_idxs_lex(void *vp_ptr, const void *x_ptr, const void *y_ptr)
 {
     vp_problem vp_prob = (vp_problem)vp_ptr;
+#endif
     int x = *((int *)x_ptr);
     int y = *((int *)y_ptr);
 
@@ -116,9 +129,15 @@ int rcmp_vp_vector_idxs_lex(void *vp_ptr, const void *x_ptr, const void *y_ptr)
 
 /* max comparison of vectors */
 // for descinding order sort...
+#ifdef NO_QSORT_R
+int rcmp_vp_vector_idxs_max(const void *x_ptr, const void *y_ptr)
+{
+    vp_problem vp_prob = (vp_problem)global_qsort_vptr;
+#else
 int rcmp_vp_vector_idxs_max(void *vp_ptr, const void *x_ptr, const void *y_ptr)
 {
     vp_problem vp_prob = (vp_problem)vp_ptr;
+#endif
     int x = *((int *)x_ptr);
     int y = *((int *)y_ptr);
 
@@ -128,9 +147,15 @@ int rcmp_vp_vector_idxs_max(void *vp_ptr, const void *x_ptr, const void *y_ptr)
 
 /* Sum comparison of vectors */
 // for descinding order sort...
+#ifdef NO_QSORT_R
+int rcmp_vp_vector_idxs_sum(const void *x_ptr, const void *y_ptr)
+{
+    vp_problem vp_prob = (vp_problem)global_qsort_vptr;
+#else
 int rcmp_vp_vector_idxs_sum(void *vp_ptr, const void *x_ptr, const void *y_ptr)
 {
     vp_problem vp_prob = (vp_problem)vp_ptr;
+#endif
     int x = *((int *)x_ptr);
     int y = *((int *)y_ptr);
 
@@ -139,10 +164,16 @@ int rcmp_vp_vector_idxs_sum(void *vp_ptr, const void *x_ptr, const void *y_ptr)
 }
 
 // for descinding order sort...
+#ifdef NO_QSORT_R
+int rcmp_vp_vector_idxs_maxratio(const void *x_ptr, const void *y_ptr)
+{
+    vp_problem vp_prob = (vp_problem)global_qsort_vptr;
+#else
 int rcmp_vp_vector_idxs_maxratio(void *vp_ptr, const void *x_ptr, 
     const void *y_ptr)
 {
     vp_problem vp_prob = (vp_problem)vp_ptr;
+#endif
     int x = *((int *)x_ptr);
     int y = *((int *)y_ptr);
 
@@ -153,10 +184,16 @@ int rcmp_vp_vector_idxs_maxratio(void *vp_ptr, const void *x_ptr,
 }
 
 // for descinding order sort...
+#ifdef NO_QSORT_R
+int rcmp_vp_vector_idxs_maxdiff(const void *x_ptr, const void *y_ptr)
+{
+    vp_problem vp_prob = (vp_problem)global_qsort_vptr;
+#else
 int rcmp_vp_vector_idxs_maxdiff(void *vp_ptr, const void *x_ptr, 
         const void *y_ptr)
 {
     vp_problem vp_prob = (vp_problem)vp_ptr;
+#endif
     int x = *((int *)x_ptr);
     int y = *((int *)y_ptr);
 
@@ -169,9 +206,15 @@ int rcmp_vp_vector_idxs_maxdiff(void *vp_ptr, const void *x_ptr,
 /* Misc comparison of vectors  */
 /* By decreasing order of MISC */
 // FIXME: only really used by Maruyama, which is not currently implemented
+#ifdef NO_QSORT_R
+int rcmp_vp_vector_idxs_misc(const void *x_ptr, const void *y_ptr)
+{
+    vp_problem vp_prob = (vp_problem)global_qsort_vptr;
+#else
 int rcmp_vp_vector_idxs_misc(void *vp_ptr, const void *x_ptr, const void *y_ptr)
 {
     vp_problem vp_prob = (vp_problem)vp_ptr;
+#endif
     int x = *((int *)x_ptr);
     int y = *((int *)y_ptr);
 
@@ -275,25 +318,37 @@ int cmp_ints(const void *x_ptr, const void *y_ptr)
     return CMP(x, y);
 }
 
+#ifdef NO_QSORT_R
+int cmp_float_array_idxs(const void *x_ptr, const void *y_ptr)
+{
+    float *vals = (float *)global_qsort_vptr;
+#else
 int cmp_float_array_idxs(void *vals_ptr, const void *x_ptr, const void *y_ptr)
 {
     float *vals = (float *)vals_ptr;
+#endif
     int x = *((int *)x_ptr);
     int y = *((int *)y_ptr);
 
     return CMP(vals[x], vals[y]);
 }
 
+#ifdef NO_QSORT_R
+int rcmp_float_array_idxs(const void *x_ptr, const void *y_ptr)
+{
+    float *vals = (float *)global_qsort_vptr;
+#else
 int rcmp_float_array_idxs(void *vals_ptr, const void *x_ptr, const void *y_ptr)
 {
     float *vals = (float *)vals_ptr;
+#endif
     int x = *((int *)x_ptr);
     int y = *((int *)y_ptr);
 
     return RCMP(vals[x], vals[y]);
 }
 
-// NOT sort functions
+// NOT sort function
 int cmp_int_arrays_lex(int length, int a1[], int a2[]) {
     int i;
     for (i = 0; i < length; i++) {
@@ -307,7 +362,12 @@ int cmp_int_arrays_lex(int length, int a1[], int a2[]) {
 // FIXME: the comparitor doesn't really need to do all this playing around
 // with pointers since we don't sort the vectors with qsort anymore...
 int solve_vp_problem_MCB(vp_problem vp_prob, int w, int isCP, 
-    int (*rcmp_vp_vector_idxs)(void *, const void *, const void *))
+#ifdef NO_QSORT_R
+    int (*rcmp_vp_vector_idxs)(const void *, const void *)
+#else
+    int (*rcmp_vp_vector_idxs)(void *, const void *, const void *)
+#endif
+    )
 {
     int i, j;
 
@@ -415,8 +475,15 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, int isCP,
 
                 cmp_val = cmp_int_arrays_lex(w, v_perm, best_perm);
 
+#ifdef NO_QSORT_R
+                global_qsort_vptr = vp_prob;
                 if (cmp_val > 0 || (0 == cmp_val && 
-                    rcmp_vp_vector_idxs(vp_prob, &v, &best_v) < 0)) {
+                    rcmp_vp_vector_idxs(&v, &best_v) < 0))
+#else
+                if (cmp_val > 0 || (0 == cmp_val && 
+                    rcmp_vp_vector_idxs(vp_prob, &v, &best_v) < 0))
+#endif
+                {
                     best_v = v;
                     best_v_idx = i;
                     tmp_perm = best_perm;
