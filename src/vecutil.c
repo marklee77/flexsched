@@ -103,6 +103,17 @@ float vp_compute_sum_load(vp_problem vp_prob, int b)
   return array_sum(vp_prob->loads[b], vp_prob->num_dims);
 }
 
+// NOT sort function
+// but could be..
+int cmp_int_arrays_lex(int length, int a1[], int a2[]) {
+    int i;
+    for (i = 0; i < length; i++) {
+        if (a1[i] < a2[i]) return -1;
+        if (a1[i] > a2[i]) return 1;
+    }
+    return 0;
+}
+
 // compare lexicographically
 #ifdef NO_QSORT_R
 int cmp_vector_array_idxs_lex(const void *x_ptr, const void *y_ptr)
@@ -118,6 +129,7 @@ int cmp_vector_array_idxs_lex(void *v_ptr, const void *x_ptr, const void *y_ptr)
 
     int i;
 
+    // FIXME: could call cmp int arrays lex here...
     for (i = 0; i < va->num_dims; i++) {
         if (va->vectors[x][i] < va->vectors[y][i]) return -1;
         if (va->vectors[x][i] > va->vectors[y][i]) return 1;
@@ -315,12 +327,3 @@ int rcmp_float_array_idxs(void *vals_ptr, const void *x_ptr, const void *y_ptr)
 }
 #endif
 
-// NOT sort function
-int cmp_int_arrays_lex(int length, int a1[], int a2[]) {
-    int i;
-    for (i = 0; i < length; i++) {
-        if (a1[i] < a2[i]) return -1;
-        if (a1[i] > a2[i]) return 1;
-    }
-    return 0;
-}

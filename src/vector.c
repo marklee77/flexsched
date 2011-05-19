@@ -43,9 +43,9 @@ void vp_compute_degrees_of_dominance(vp_problem vp_prob)
 int solve_vp_problem_FITD(
     vp_problem vp_prob, int fit_type, 
 #ifdef NO_QSORT_R
-    int (*rcmp_vector_array_idxs)(const void *, const void *),
+    int (*cmp_item_idxs)(const void *, const void *),
 #else
-    int (*rcmp_vector_array_idxs)(void *, const void *, const void *)
+    int (*cmp_item_idxs)(void *, const void *, const void *)
 #endif
     )
 {
@@ -60,7 +60,7 @@ int solve_vp_problem_FITD(
     for (i = 0; i < vp_prob->num_items; i++) sortmap[i] = i;
     va.vectors = vp_prob->items;
     qsort_r(sortmap, vp_prob->num_items, sizeof(int), &va, 
-        rcmp_vector_array_idxs);
+        cmp_item_idxs);
 
     // Place vectors into bins
     switch(fit_type) {
@@ -98,9 +98,9 @@ int solve_vp_problem_FITD(
 // with pointers since we don't sort the vectors with qsort anymore...
 int solve_vp_problem_MCB(vp_problem vp_prob, int w, int isCP, 
 #ifdef NO_QSORT_R
-    int (*rcmp_vector_array_idxs)(const void *, const void *)
+    int (*cmp_item_idxs)(const void *, const void *)
 #else
-    int (*rcmp_vector_array_idxs)(void *, const void *, const void *)
+    int (*cmp_item_idxs)(void *, const void *, const void *)
 #endif
     )
 {
@@ -217,11 +217,11 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, int isCP,
                 va.vectors = vp_prob->items;
 #ifdef NO_QSORT_R
                 global_qsort_vptr = &va;
-                if (cmp_val > 0 || (0 == cmp_val && 
-                    rcmp_vector_array_idxs(&v, &best_v) < 0))
+                if (cmp_val < 0 || (0 == cmp_val && 
+                    cmp_item_idxs(&v, &best_v) < 0))
 #else
                 if (cmp_val > 0 || (0 == cmp_val && 
-                    rcmp_vector_array_idxs(&va, &v, &best_v) < 0))
+                    cmp_item_idxs(&va, &v, &best_v) < 0))
 #endif
                 {
                     best_v = v;

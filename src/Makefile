@@ -1,5 +1,5 @@
 PROG = flexsched
-OBJS = main.o util.o greedy.o linearprog.o vector.o vecutil.o
+OBJS = main.o util.o greedy.o linearprog.o vector.o vecutil.o hetero.o
 
 CC = gcc
 CFLAGS = -I$(HOME)/progs/base/include -g #-DDEBUG
