@@ -34,52 +34,33 @@ int cmp_int_arrays_lex(int, int [], int []);
 int cmp_ints(const void *, const void *);
 
 #ifdef NO_QSORT_R
-
 extern void *global_qsort_vptr;
 #define qsort_r(base, nel, width, thunk, compar) global_qsort_vptr = thunk; \
     qsort(base, nel, width, compar);
-
-int cmp_vector_array_idxs_lex(const void *, const void *);
-int rcmp_vector_array_idxs_lex(const void *, const void *);
-
-int cmp_vector_array_idxs_max(const void *, const void *);
-int rcmp_vector_array_idxs_max(const void *, const void *);
-
-int cmp_vector_array_idxs_sum(const void *, const void *);
-int rcmp_vector_array_idxs_sum(const void *, const void *);
-
-int cmp_vector_array_idxs_maxratio(const void *, const void *);
-int rcmp_vector_array_idxs_maxratio(const void *, const void *);
-
-int cmp_vector_array_idxs_maxdiff(const void *, const void *);
-int rcmp_vector_array_idxs_maxdiff(const void *, const void *);
-
-int cmp_float_array_idxs(const void *, const void *);
-int rcmp_float_array_idxs(const void *, const void *);
+typedef (int)(const void *, const void *) qsort_cmp_func;
 
 #else
-
-int cmp_vector_array_idxs_lex(void *, const void *, const void *);
-int rcmp_vector_array_idxs_lex(void *, const void *, const void *);
-
-int cmp_vector_array_idxs_max(void *, const void *, const void *);
-int rcmp_vector_array_idxs_max(void *, const void *, const void *);
-
-int cmp_vector_array_idxs_sum(void *, const void *, const void *);
-int rcmp_vector_array_idxs_sum(void *, const void *, const void *);
-
-int cmp_vector_array_idxs_maxratio(void *, const void *, const void *);
-int rcmp_vector_array_idxs_maxratio(void *, const void *, const void *);
-
-int cmp_vector_array_idxs_maxdiff(void *, const void *, const void *);
-int rcmp_vector_array_idxs_maxdiff(void *, const void *, const void *);
-
-int cmp_vector_array_idxs_misc(void *, const void *, const void *);
-int rcmp_vector_array_idxs_misc(void *, const void *, const void *);
-
-int cmp_float_array_idxs(void *, const void *, const void *);
-int rcmp_float_array_idxs(void *, const void *, const void *);
+typedef int(qsort_cmp_func)(void *, const void *, const void *);
 
 #endif
+
+qsort_cmp_func cmp_vector_array_idxs_lex;
+qsort_cmp_func rcmp_vector_array_idxs_lex;
+
+qsort_cmp_func cmp_vector_array_idxs_max;
+qsort_cmp_func rcmp_vector_array_idxs_max;
+
+qsort_cmp_func cmp_vector_array_idxs_sum;
+qsort_cmp_func rcmp_vector_array_idxs_sum;
+
+qsort_cmp_func cmp_vector_array_idxs_maxratio;
+qsort_cmp_func rcmp_vector_array_idxs_maxratio;
+
+qsort_cmp_func cmp_vector_array_idxs_maxdiff;
+qsort_cmp_func rcmp_vector_array_idxs_maxdiff;
+
+qsort_cmp_func cmp_float_array_idxs;
+qsort_cmp_func rcmp_float_array_idxs;
+
 
 #endif

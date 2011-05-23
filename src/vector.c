@@ -40,17 +40,10 @@ void vp_compute_degrees_of_dominance(vp_problem vp_prob)
  *
  * Returns the number of used bins
  */
-int solve_vp_problem_FITD(
-    vp_problem vp_prob, int fit_type, 
-#ifdef NO_QSORT_R
-    int (*cmp_item_idxs)(const void *, const void *),
-#else
-    int (*cmp_item_idxs)(void *, const void *, const void *)
-#endif
-    )
+int solve_vp_problem_FITD(vp_problem vp_prob, int fit_type, 
+    qsort_cmp_func *cmp_item_idxs)
 {
     int i, j, k;
-    int (*compar)(void *, const void *, const void *);
     int sortmap[vp_prob->num_items];
     float sumloads[vp_prob->num_bins];
     struct vector_array_t va;
@@ -97,12 +90,7 @@ int solve_vp_problem_FITD(
 // FIXME: the comparitor doesn't really need to do all this playing around
 // with pointers since we don't sort the vectors with qsort anymore...
 int solve_vp_problem_MCB(vp_problem vp_prob, int w, int isCP, 
-#ifdef NO_QSORT_R
-    int (*cmp_item_idxs)(const void *, const void *)
-#else
-    int (*cmp_item_idxs)(void *, const void *, const void *)
-#endif
-    )
+    qsort_cmp_func *cmp_item_idxs)
 {
     int i, j;
 

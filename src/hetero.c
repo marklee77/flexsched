@@ -4,16 +4,9 @@
 #define FIRST_FIT 0
 #define BEST_FIT 1
 
-int solve_vp_problem_HETERO_FITD(
-    vp_problem vp_prob, int fit_type, int reshuffle_bins,
-#ifdef NO_QSORT_R
-    int (*cmp_item_idxs)(const void *, const void *),
-    int (*cmp_bin_idxs)(const void *, const void *)
-#else
-    int (*cmp_item_idxs)(void *, const void *, const void *),
-    int (*cmp_bin_idxs)(void *, const void *, const void *)
-#endif
-    )
+int solve_vp_problem_HETERO_FITD(vp_problem vp_prob, int fit_type, 
+    int reshuffle_bins, qsort_cmp_func *cmp_item_idxs, 
+    qsort_cmp_func *cmp_bin_idxs)
 {
     int i, j;
     int v, b;
@@ -75,15 +68,8 @@ int solve_vp_problem_HETERO_FITD(
 
 // solve vp problem using Permutation Pack or Choose Pack
 int solve_vp_problem_HETERO_MCB(vp_problem vp_prob, int w, int isCP, 
-    int rescale_items, int reshuffle_bins,
-#ifdef NO_QSORT_R
-    int (*cmp_item_idxs)(const void *, const void *),
-    int (*cmp_bin_idxs)(const void *, const void *)
-#else
-    int (*cmp_item_idxs)(void *, const void *, const void *),
-    int (*cmp_bin_idxs)(void *, const void *, const void *)
-#endif
-    )
+    int rescale_items, int reshuffle_bins, qsort_cmp_func *cmp_item_idxs, 
+    qsort_cmp_func *cmp_bin_idxs)
 {
     int i, j;
 
@@ -324,75 +310,40 @@ int solve_vp_problem_HETERO_MCB(vp_problem vp_prob, int w, int isCP,
     return num_unmapped_vectors;
 }
     
+int hvp_solver_FF(vp_problem vp_prob, 
+    qsort_cmp_func cmp_item_idxs, qsort_cmp_func cmp_bin_idxs)
+{
+    return solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 0, cmp_item_idxs,
+            cmp_bin_idxs);
+}
+
+int hvp_solver_FFR(vp_problem vp_prob, 
+    qsort_cmp_func cmp_item_idxs, qsort_cmp_func cmp_bin_idxs)
+{
+    return solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 1, cmp_item_idxs,
+            cmp_bin_idxs);
+}
+
+int hvp_solver_BF(vp_problem vp_prob, 
+    qsort_cmp_func cmp_item_idxs, qsort_cmp_func cmp_bin_idxs)
+{
+    return solve_vp_problem_HETERO_FITD(vp_prob, BEST_FIT, 0, cmp_item_idxs,
+            cmp_bin_idxs);
+}
+
+// FIXME: work on this...
 /* solve_vp_instance() 
  *  Returns the number of bins used
  */
-int solve_hvp_problem(vp_problem vp_prob, char *vp_algorithm)
+int (*get_hvp_solver(char *vp_algorithm))(vp_problem, qsort_cmp_func,
+        qsort_cmp_func)
 {
-    int retval = 1;
-    if (!strcmp(vp_algorithm, "FFDLEXALEX")) {
-        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 0,
-            rcmp_vector_array_idxs_lex, cmp_vector_array_idxs_lex);
-    } else if (!strcmp(vp_algorithm, "FFDLEXAMAX")) {
-        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 0,
-            rcmp_vector_array_idxs_lex, cmp_vector_array_idxs_max);
-    } else if (!strcmp(vp_algorithm, "FFDLEXASUM")) {
-        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 0,
-            rcmp_vector_array_idxs_lex, cmp_vector_array_idxs_sum);
-    } else if (!strcmp(vp_algorithm, "FFDMAXALEX")) {
-        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 0,
-            rcmp_vector_array_idxs_max, cmp_vector_array_idxs_lex);
-    } else if (!strcmp(vp_algorithm, "FFDMAXAMAX")) {
-        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 0,
-            rcmp_vector_array_idxs_max, cmp_vector_array_idxs_max);
-    } else if (!strcmp(vp_algorithm, "FFDMAXASUM")) {
-        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 0,
-            rcmp_vector_array_idxs_max, cmp_vector_array_idxs_sum);
-    } else if (!strcmp(vp_algorithm, "FFDSUMALEX")) {
-        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 0,
-            rcmp_vector_array_idxs_sum, cmp_vector_array_idxs_lex);
-    } else if (!strcmp(vp_algorithm, "FFDSUMAMAX")) {
-        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 0,
-            rcmp_vector_array_idxs_sum, cmp_vector_array_idxs_max);
-    } else if (!strcmp(vp_algorithm, "FFDSUMASUM")) {
-        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 0,
-            rcmp_vector_array_idxs_sum, cmp_vector_array_idxs_sum);
-    } else if (!strcmp(vp_algorithm, "FFDLEXALEXR")) {
-        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 1,
-            rcmp_vector_array_idxs_lex, cmp_vector_array_idxs_lex);
-    } else if (!strcmp(vp_algorithm, "FFDLEXAMAXR")) {
-        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 1,
-            rcmp_vector_array_idxs_lex, cmp_vector_array_idxs_max);
-    } else if (!strcmp(vp_algorithm, "FFDLEXASUMR")) {
-        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 1,
-            rcmp_vector_array_idxs_lex, cmp_vector_array_idxs_sum);
-    } else if (!strcmp(vp_algorithm, "FFDMAXALEXR")) {
-        retval = solve_vp_problem_FITD(vp_prob, FIRST_FIT, 1,
-            rcmp_vector_array_idxs_max, cmp_vector_array_idxs_lex);
-    } else if (!strcmp(vp_algorithm, "FFDMAXAMAXR")) {
-        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 1,
-            rcmp_vector_array_idxs_max, cmp_vector_array_idxs_max);
-    } else if (!strcmp(vp_algorithm, "FFDMAXASUMR")) {
-        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 1,
-            rcmp_vector_array_idxs_max, cmp_vector_array_idxs_sum);
-    } else if (!strcmp(vp_algorithm, "FFDSUMALEXR")) {
-        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 1,
-            rcmp_vector_array_idxs_sum, cmp_vector_array_idxs_lex);
-    } else if (!strcmp(vp_algorithm, "FFDSUMAMAXR")) {
-        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 1,
-            rcmp_vector_array_idxs_sum, cmp_vector_array_idxs_max);
-    } else if (!strcmp(vp_algorithm, "FFDSUMASUMR")) {
-        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 1,
-            rcmp_vector_array_idxs_sum, cmp_vector_array_idxs_sum);
-    } else if (!strcmp(vp_algorithm, "BFDLEX")) {
-        retval = solve_vp_problem_HETERO_FITD(vp_prob, BEST_FIT, 0,
-            rcmp_vector_array_idxs_lex, NULL);
-    } else if (!strcmp(vp_algorithm, "BFDMAX")) {
-        retval = solve_vp_problem_HETERO_FITD(vp_prob, BEST_FIT, 0,
-            rcmp_vector_array_idxs_max, NULL);
-    } else if (!strcmp(vp_algorithm, "BFDSUM")) {
-        retval = solve_vp_problem_HETERO_FITD(vp_prob, BEST_FIT, 0,
-            rcmp_vector_array_idxs_sum, NULL);
+    if (!strcmp(vp_algorithm, "FF")) {
+        return hvp_solver_FF;
+    } else if (!strcmp(vp_algorithm, "FFR")) {
+        return hvp_solver_FFR;
+    } else if (!strcmp(vp_algorithm, "BF")) {
+        return hvp_solver_BF;
     } else if (!strcmp(vp_algorithm, "CPMAX")) {
         retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 1, 0, 0,
             rcmp_vector_array_idxs_max, NULL);
@@ -520,16 +471,51 @@ int solve_hvp_problem(vp_problem vp_prob, char *vp_algorithm)
     return retval;
 }
 
+qsort_cmp_func get_cmp_function(char *cmp_name) {
+    if (NULL == cmp_name) {
+        return NULL;
+    if (!strcmp(cmp_name, "ALEX")) {
+        return cmp_vector_array_idxs_lex;
+    } else if (!strcmp(cmp_name, "AMAX")) {
+        return cmp_vector_array_idxs_max;
+    } else if (!strcmp(cmp_name, "ASUM")) {
+        return cmp_vector_array_idxs_sum;
+    } else if (!strcmp(cmp_name, "AMAXRATIO")) {
+        return cmp_vector_array_idxs_maxratio;
+    } else if (!strcmp(cmp_name, "AMAXDIFF")) {
+        return cmp_vector_array_idxs_maxdiff;
+    if (!strcmp(cmp_name, "DLEX")) {
+        return rcmp_vector_array_idxs_lex;
+    } else if (!strcmp(cmp_name, "DMAX")) {
+        return rcmp_vector_array_idxs_max;
+    } else if (!strcmp(cmp_name, "DSUM")) {
+        return rcmp_vector_array_idxs_sum;
+    } else if (!strcmp(cmp_name, "DMAXRATIO")) {
+        return rcmp_vector_array_idxs_maxratio;
+    } else if (!strcmp(cmp_name, "DMAXDIFF")) {
+        return rcmp_vector_array_idxs_maxdiff;
+    } else {
+        fprintf(stderr, "Unknown comparison '%s'\n", cmp_name);
+        exit(1);
+    }
+
+    return NULL;
+}
+
 /* 
  * VP_scheduler() 
  */
 flexsched_solution HVP_scheduler(
-    char *vp_algorithm, char *ignore2, char *ignore3)
+    char *vp_algorithm, char *item_cmp_name, char *bin_cmp_name)
 {
     flexsched_solution flex_soln = new_flexsched_solution(vp_algorithm);
     double yield, yieldlb, yieldub, best_yield;
     vp_problem vp_prob = NULL;
     int i, status;
+    int (*hvp_solver)(vp_prob, qsort_cmp_func, qsort_cmp_func) 
+        = get_solver_func(vp_algorithm);
+    qsort_cmp_func cmp_item_idxs = get_cmp_func(item_cmp_name);
+    qsort_cmp_func cmp_bin_idxs = get_cmp_func(bin_cmp_name);
 
     yieldlb = 0.0;
     yieldub = compute_LP_bound();
@@ -545,7 +531,7 @@ flexsched_solution HVP_scheduler(
         vp_prob = new_vp_problem(yield);
 
         // Solve the VP instance
-        if (solve_hvp_problem(vp_prob, vp_algorithm)) {
+        if (hvp_solver(vp_prob, cmp_item_idxs, cmp_bin_idxs)) {
             yieldub = yield;
         } else {
             yieldlb = yield;
