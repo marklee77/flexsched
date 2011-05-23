@@ -160,6 +160,7 @@ flexsched_solution GREEDY_scheduler(char*, char*, char*);
 flexsched_solution METAGREEDY_scheduler(char*, char*, char*);
 flexsched_solution METAGREEDYLIGHT_scheduler(char*, char*, char*);
 flexsched_solution VP_scheduler(char*, char*, char*);
+flexsched_solution HVP_scheduler(char*, char*, char*);
 flexsched_solution GA_scheduler(char*, char*, char*);
 
 #endif

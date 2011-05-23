@@ -67,7 +67,7 @@ struct scheduler_t implemented_schedulers[] = {
     {"VP_PPSUM",     VP_scheduler,         "PPSUM", NULL, NULL},
     {"VP_PPMAX",     VP_scheduler,         "PPMAX", NULL, NULL},
     {"VP_CPMAXDIFF", VP_scheduler,         "CPMAXDIFF", NULL, NULL},
-    {"VP_CPMAXRATIO",VP_scheduler,         "CPMAXRATIO", NULL, NULL},
+    {"VP_CPMAXRATIO", VP_scheduler,         "CPMAXRATIO", NULL, NULL},
     {"VP_CPSUM",     VP_scheduler,         "CPSUM", NULL, NULL},
     {"VP_CPMAX",     VP_scheduler,         "CPMAX", NULL, NULL},
     {"VP_BFDSUM",    VP_scheduler,         "BFDSUM", NULL, NULL},
@@ -76,6 +76,14 @@ struct scheduler_t implemented_schedulers[] = {
     {"VP_FFDSUM",    VP_scheduler,         "FFDSUM", NULL, NULL},
     {"VP_FFDMAX",    VP_scheduler,         "FFDMAX", NULL, NULL},
     {"VP_FFDLEX",    VP_scheduler,         "FFDLEX", NULL, NULL},
+
+    {"HVP_PPMAX",     HVP_scheduler,        "PPMAX", NULL, NULL},
+    {"HVP_CPMAX",     HVP_scheduler,        "CPMAX", NULL, NULL},
+    {"HVP_CPMAXR",    HVP_scheduler,       "CPMAXR", NULL, NULL},
+    {"HVP_CPMAXMAX",  HVP_scheduler,     "CPMAXMAX", NULL, NULL},
+    {"HVP_CPMAXMAXR", HVP_scheduler,    "CPMAXMAXR", NULL, NULL},
+    {"HVP_CPMAXMAXS", HVP_scheduler,    "CPMAXMAXS", NULL, NULL},
+    {"HVP_CPMAXMAXRS",HVP_scheduler,   "CPMAXMAXRS", NULL, NULL},
 /*
     {"VP_CHEKURI",   VP_scheduler,         "CHEKURI", NULL, NULL},
     {"GA",           GA_scheduler,         "N", "N", "N"},

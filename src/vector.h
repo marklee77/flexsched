@@ -15,6 +15,7 @@ typedef struct vp_problem_struct {
     // unlike with flex_prob, we just store the solution in the problem
     int *mapping;
     float **loads; // useful scratch variable
+    float **capacities; // useful scratch variable
     float *misc; // scratch -- inelegant but useful...
 } *vp_problem; 
 
@@ -80,6 +81,5 @@ int cmp_float_array_idxs(void *, const void *, const void *);
 int rcmp_float_array_idxs(void *, const void *, const void *);
 
 #endif
-
 
 #endif

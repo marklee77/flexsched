@@ -5,7 +5,7 @@
 #define BEST_FIT 1
 
 int solve_vp_problem_HETERO_FITD(
-    vp_problem vp_prob, int fit_type, 
+    vp_problem vp_prob, int fit_type, int reshuffle_bins,
 #ifdef NO_QSORT_R
     int (*cmp_item_idxs)(const void *, const void *),
     int (*cmp_bin_idxs)(const void *, const void *)
@@ -28,14 +28,15 @@ int solve_vp_problem_HETERO_FITD(
     va.vectors = vp_prob->items;
     qsort_r(item_sortmap, vp_prob->num_items, sizeof(int), &va, cmp_item_idxs);
 
-    // set up bin sort map
-    for (j = 0; j < vp_prob->num_bins; j++) bin_sortmap[j] = j;
-    va.vectors = vp_prob->bins;
-    qsort_r(bin_sortmap, vp_prob->num_bins, sizeof(int), &va, cmp_bin_idxs);
-
     // Place vectors into bins
     switch(fit_type) {
         case FIRST_FIT:
+
+        // set up bin sort map
+        for (j = 0; j < vp_prob->num_bins; j++) bin_sortmap[j] = j;
+        va.vectors = vp_prob->capacities;
+        qsort_r(bin_sortmap, vp_prob->num_bins, sizeof(int), &va, cmp_bin_idxs);
+
         for (i = 0; i < vp_prob->num_items; i++) {
             v = item_sortmap[i];
             for (j = 0; j < vp_prob->num_bins; j++) {
@@ -43,15 +44,18 @@ int solve_vp_problem_HETERO_FITD(
                 if (!vp_put_vector_in_bin_safe(vp_prob, v, b)) break;
             }
             if (j >= vp_prob->num_bins) return 1;
+            if (reshuffle_bins) {
+                qsort_r(bin_sortmap, vp_prob->num_bins, sizeof(int), &va, 
+                    cmp_bin_idxs);
+            }
         }
         break;
         case BEST_FIT:
         for (i = 0; i < vp_prob->num_items; i++) {
             v = item_sortmap[i];
             for (j = 0; j < vp_prob->num_bins; j++) {
-                b = bin_sortmap[j];
-                if (vp_vector_can_fit_in_bin(vp_prob, v, b)) {
-                    sumloads[b] = vp_compute_sum_load(vp_prob, b);
+                if (vp_vector_can_fit_in_bin(vp_prob, v, j)) {
+                    sumloads[j] = vp_compute_sum_load(vp_prob, j);
                 } else {
                     sumloads[j] = -1.0;
                 }
@@ -81,7 +85,7 @@ int solve_vp_problem_HETERO_MCB(vp_problem vp_prob, int w, int isCP,
 #endif
     )
 {
-    int i, j, k;
+    int i, j;
 
     int dims[vp_prob->num_dims];
     int vector_dims[vp_prob->num_items][w];
@@ -188,6 +192,7 @@ int solve_vp_problem_HETERO_MCB(vp_problem vp_prob, int w, int isCP,
 
             // apply bin key inverse to best vector key to get how it permutes
             // the bin key in the first w elements...
+            // FIXME: should this be done to current or absolute bin capacity?
             if (rescale_items) {
                 for (j = 0; j < vp_prob->num_dims; j++) {
                     rescaled_item[j] = 
@@ -246,6 +251,36 @@ int solve_vp_problem_HETERO_MCB(vp_problem vp_prob, int w, int isCP,
                     cmp_item_idxs(&va, &v, &best_v) < 0))
 #endif
                 {
+#if 0
+                    printf("bin state is: (");
+                    for (j = 0; j < vp_prob->num_dims; j++) {
+                        printf("%.3f ", vp_prob->loads[b][j]);
+                    }   
+                    printf ("), (");
+                    for (j = 0; j < vp_prob->num_dims; j++) {
+                        printf("%d ", bin_dim_positions[j]);
+                    }   
+                    printf(")\n");
+                    printf("cmp is (%d, %d)\n", cmp_val, cmp_item_idxs(&va, &v, &best_v));
+                    printf("selecting item %d (", v); 
+                    for (j = 0; j < vp_prob->num_dims; j++) {
+                        printf("%.3f ", vp_prob->items[v][j]);
+                    }   
+                    printf("; ");
+                    for (j = 0; j < w; j++) {
+                        printf("%d ", v_perm[j]);
+                    }   
+                    printf(") over item %d (", best_v);
+                    for (j = 0; j < vp_prob->num_dims; j++) {
+                        printf("%.3f ", vp_prob->items[best_v][j]);
+                    }   
+                    printf("; ");
+                    for (j = 0; j < w; j++) {
+                        printf("%d ", best_perm[j]);
+                    }   
+                    printf(")\n");
+#endif
+
                     best_v = v;
                     best_v_idx = i;
                     tmp_perm = best_perm;
@@ -294,49 +329,190 @@ int solve_vp_problem_HETERO_MCB(vp_problem vp_prob, int w, int isCP,
  */
 int solve_hvp_problem(vp_problem vp_prob, char *vp_algorithm)
 {
-    int retval;
-    if (!strcmp(vp_algorithm, "FFDLEX")) {
-        retval = solve_vp_problem_FITD(vp_prob, FIRST_FIT, 
-            rcmp_vector_array_idxs_lex);
-    } else if (!strcmp(vp_algorithm, "FFDMAX")) {
-        retval = solve_vp_problem_FITD(vp_prob, FIRST_FIT, 
-            rcmp_vector_array_idxs_max);
-    } else if (!strcmp(vp_algorithm, "FFDSUM")) {
-        retval = solve_vp_problem_FITD(vp_prob, FIRST_FIT, 
-            rcmp_vector_array_idxs_sum);
+    int retval = 1;
+    if (!strcmp(vp_algorithm, "FFDLEXALEX")) {
+        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 0,
+            rcmp_vector_array_idxs_lex, cmp_vector_array_idxs_lex);
+    } else if (!strcmp(vp_algorithm, "FFDLEXAMAX")) {
+        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 0,
+            rcmp_vector_array_idxs_lex, cmp_vector_array_idxs_max);
+    } else if (!strcmp(vp_algorithm, "FFDLEXASUM")) {
+        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 0,
+            rcmp_vector_array_idxs_lex, cmp_vector_array_idxs_sum);
+    } else if (!strcmp(vp_algorithm, "FFDMAXALEX")) {
+        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 0,
+            rcmp_vector_array_idxs_max, cmp_vector_array_idxs_lex);
+    } else if (!strcmp(vp_algorithm, "FFDMAXAMAX")) {
+        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 0,
+            rcmp_vector_array_idxs_max, cmp_vector_array_idxs_max);
+    } else if (!strcmp(vp_algorithm, "FFDMAXASUM")) {
+        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 0,
+            rcmp_vector_array_idxs_max, cmp_vector_array_idxs_sum);
+    } else if (!strcmp(vp_algorithm, "FFDSUMALEX")) {
+        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 0,
+            rcmp_vector_array_idxs_sum, cmp_vector_array_idxs_lex);
+    } else if (!strcmp(vp_algorithm, "FFDSUMAMAX")) {
+        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 0,
+            rcmp_vector_array_idxs_sum, cmp_vector_array_idxs_max);
+    } else if (!strcmp(vp_algorithm, "FFDSUMASUM")) {
+        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 0,
+            rcmp_vector_array_idxs_sum, cmp_vector_array_idxs_sum);
+    } else if (!strcmp(vp_algorithm, "FFDLEXALEXR")) {
+        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 1,
+            rcmp_vector_array_idxs_lex, cmp_vector_array_idxs_lex);
+    } else if (!strcmp(vp_algorithm, "FFDLEXAMAXR")) {
+        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 1,
+            rcmp_vector_array_idxs_lex, cmp_vector_array_idxs_max);
+    } else if (!strcmp(vp_algorithm, "FFDLEXASUMR")) {
+        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 1,
+            rcmp_vector_array_idxs_lex, cmp_vector_array_idxs_sum);
+    } else if (!strcmp(vp_algorithm, "FFDMAXALEXR")) {
+        retval = solve_vp_problem_FITD(vp_prob, FIRST_FIT, 1,
+            rcmp_vector_array_idxs_max, cmp_vector_array_idxs_lex);
+    } else if (!strcmp(vp_algorithm, "FFDMAXAMAXR")) {
+        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 1,
+            rcmp_vector_array_idxs_max, cmp_vector_array_idxs_max);
+    } else if (!strcmp(vp_algorithm, "FFDMAXASUMR")) {
+        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 1,
+            rcmp_vector_array_idxs_max, cmp_vector_array_idxs_sum);
+    } else if (!strcmp(vp_algorithm, "FFDSUMALEXR")) {
+        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 1,
+            rcmp_vector_array_idxs_sum, cmp_vector_array_idxs_lex);
+    } else if (!strcmp(vp_algorithm, "FFDSUMAMAXR")) {
+        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 1,
+            rcmp_vector_array_idxs_sum, cmp_vector_array_idxs_max);
+    } else if (!strcmp(vp_algorithm, "FFDSUMASUMR")) {
+        retval = solve_vp_problem_HETERO_FITD(vp_prob, FIRST_FIT, 1,
+            rcmp_vector_array_idxs_sum, cmp_vector_array_idxs_sum);
     } else if (!strcmp(vp_algorithm, "BFDLEX")) {
-        retval = solve_vp_problem_FITD(vp_prob, BEST_FIT, 
-            rcmp_vector_array_idxs_lex);
+        retval = solve_vp_problem_HETERO_FITD(vp_prob, BEST_FIT, 0,
+            rcmp_vector_array_idxs_lex, NULL);
     } else if (!strcmp(vp_algorithm, "BFDMAX")) {
-        retval = solve_vp_problem_FITD(vp_prob, BEST_FIT, 
-            rcmp_vector_array_idxs_max);
+        retval = solve_vp_problem_HETERO_FITD(vp_prob, BEST_FIT, 0,
+            rcmp_vector_array_idxs_max, NULL);
     } else if (!strcmp(vp_algorithm, "BFDSUM")) {
-        retval = solve_vp_problem_FITD(vp_prob, BEST_FIT, 
-            rcmp_vector_array_idxs_sum);
+        retval = solve_vp_problem_HETERO_FITD(vp_prob, BEST_FIT, 0,
+            rcmp_vector_array_idxs_sum, NULL);
     } else if (!strcmp(vp_algorithm, "CPMAX")) {
-        retval = solve_vp_problem_MCB(vp_prob, 1, 1, 
-            rcmp_vector_array_idxs_max);
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 1, 0, 0,
+            rcmp_vector_array_idxs_max, NULL);
     } else if (!strcmp(vp_algorithm, "CPSUM")) {
-        retval = solve_vp_problem_MCB(vp_prob, 1, 1, 
-            rcmp_vector_array_idxs_sum);
-    } else if (!strcmp(vp_algorithm, "CPMAXRATIO")) {
-        retval = solve_vp_problem_MCB(vp_prob, 1, 1, 
-            rcmp_vector_array_idxs_maxratio);
-    } else if (!strcmp(vp_algorithm, "CPMAXDIFF")) {
-        retval = solve_vp_problem_MCB(vp_prob, 1, 1, 
-            rcmp_vector_array_idxs_maxdiff);
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 1, 0, 0,
+            rcmp_vector_array_idxs_sum, NULL);
     } else if (!strcmp(vp_algorithm, "PPMAX")) {
-        retval = solve_vp_problem_MCB(vp_prob, 1, 0, 
-            rcmp_vector_array_idxs_max);
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 0, 0, 0,
+            rcmp_vector_array_idxs_max, NULL);
     } else if (!strcmp(vp_algorithm, "PPSUM")) {
-        retval = solve_vp_problem_MCB(vp_prob, 1, 0, 
-            rcmp_vector_array_idxs_sum);
-    } else if (!strcmp(vp_algorithm, "PPMAXRATIO")) {
-        retval = solve_vp_problem_MCB(vp_prob, 1, 0,
-            rcmp_vector_array_idxs_maxratio);
-    } else if (!strcmp(vp_algorithm, "PPMAXDIFF")) {
-        retval = solve_vp_problem_MCB(vp_prob, 1, 0, 
-            rcmp_vector_array_idxs_maxdiff);
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 0, 0, 0,
+            rcmp_vector_array_idxs_sum, NULL);
+    } else if (!strcmp(vp_algorithm, "CPMAXR")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 1, 1, 0,
+            rcmp_vector_array_idxs_max, NULL);
+    } else if (!strcmp(vp_algorithm, "CPSUMR")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 1, 1, 0,
+            rcmp_vector_array_idxs_sum, NULL);
+    } else if (!strcmp(vp_algorithm, "PPMAXR")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 0, 1, 0,
+            rcmp_vector_array_idxs_max, NULL);
+    } else if (!strcmp(vp_algorithm, "PPSUMR")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 0, 1, 0,
+            rcmp_vector_array_idxs_sum, NULL);
+    } else if (!strcmp(vp_algorithm, "CPMAXMAX")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 1, 0, 0,
+            rcmp_vector_array_idxs_max, rcmp_vector_array_idxs_max);
+    } else if (!strcmp(vp_algorithm, "CPSUMMAX")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 1, 0, 0,
+            rcmp_vector_array_idxs_sum, rcmp_vector_array_idxs_max);
+    } else if (!strcmp(vp_algorithm, "PPMAXMAX")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 0, 0, 0,
+            rcmp_vector_array_idxs_max, rcmp_vector_array_idxs_max);
+    } else if (!strcmp(vp_algorithm, "PPSUMMAX")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 0, 0, 0,
+            rcmp_vector_array_idxs_sum, rcmp_vector_array_idxs_max);
+    } else if (!strcmp(vp_algorithm, "CPMAXMAXR")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 1, 1, 0,
+            rcmp_vector_array_idxs_max, rcmp_vector_array_idxs_max);
+    } else if (!strcmp(vp_algorithm, "CPSUMMAXR")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 1, 1, 0,
+            rcmp_vector_array_idxs_sum, rcmp_vector_array_idxs_max);
+    } else if (!strcmp(vp_algorithm, "PPMAXMAXR")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 0, 1, 0,
+            rcmp_vector_array_idxs_max, rcmp_vector_array_idxs_max);
+    } else if (!strcmp(vp_algorithm, "PPSUMMAXR")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 0, 1, 0,
+            rcmp_vector_array_idxs_sum, rcmp_vector_array_idxs_max);
+    } else if (!strcmp(vp_algorithm, "CPMAXSUM")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 1, 0, 0,
+            rcmp_vector_array_idxs_max, rcmp_vector_array_idxs_sum);
+    } else if (!strcmp(vp_algorithm, "CPSUMSUM")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 1, 0, 0,
+            rcmp_vector_array_idxs_sum, rcmp_vector_array_idxs_sum);
+    } else if (!strcmp(vp_algorithm, "PPMAXSUM")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 0, 0, 0,
+            rcmp_vector_array_idxs_max, rcmp_vector_array_idxs_sum);
+    } else if (!strcmp(vp_algorithm, "PPSUMSUM")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 0, 0, 0,
+            rcmp_vector_array_idxs_sum, rcmp_vector_array_idxs_sum);
+    } else if (!strcmp(vp_algorithm, "CPMAXSUMR")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 1, 1, 0,
+            rcmp_vector_array_idxs_max, rcmp_vector_array_idxs_sum);
+    } else if (!strcmp(vp_algorithm, "CPSUMSUMR")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 1, 1, 0,
+            rcmp_vector_array_idxs_sum, rcmp_vector_array_idxs_sum);
+    } else if (!strcmp(vp_algorithm, "PPMAXSUMR")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 0, 1, 0,
+            rcmp_vector_array_idxs_max, rcmp_vector_array_idxs_sum);
+    } else if (!strcmp(vp_algorithm, "PPSUMSUMR")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 0, 1, 0,
+            rcmp_vector_array_idxs_sum, rcmp_vector_array_idxs_sum);
+    } else if (!strcmp(vp_algorithm, "CPMAXMAXS")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 1, 0, 1,
+            rcmp_vector_array_idxs_max, rcmp_vector_array_idxs_max);
+    } else if (!strcmp(vp_algorithm, "CPSUMMAXS")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 1, 0, 1,
+            rcmp_vector_array_idxs_sum, rcmp_vector_array_idxs_max);
+    } else if (!strcmp(vp_algorithm, "PPMAXMAXS")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 0, 0, 1,
+            rcmp_vector_array_idxs_max, rcmp_vector_array_idxs_max);
+    } else if (!strcmp(vp_algorithm, "PPSUMMAXS")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 0, 0, 1,
+            rcmp_vector_array_idxs_sum, rcmp_vector_array_idxs_max);
+    } else if (!strcmp(vp_algorithm, "CPMAXMAXRS")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 1, 1, 1,
+            rcmp_vector_array_idxs_max, rcmp_vector_array_idxs_max);
+    } else if (!strcmp(vp_algorithm, "CPSUMMAXRS")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 1, 1, 1,
+            rcmp_vector_array_idxs_sum, rcmp_vector_array_idxs_max);
+    } else if (!strcmp(vp_algorithm, "PPMAXMAXRS")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 0, 1, 1,
+            rcmp_vector_array_idxs_max, rcmp_vector_array_idxs_max);
+    } else if (!strcmp(vp_algorithm, "PPSUMMAXRS")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 0, 1, 1,
+            rcmp_vector_array_idxs_sum, rcmp_vector_array_idxs_max);
+    } else if (!strcmp(vp_algorithm, "CPMAXSUMS")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 1, 0, 1,
+            rcmp_vector_array_idxs_max, rcmp_vector_array_idxs_sum);
+    } else if (!strcmp(vp_algorithm, "CPSUMSUMS")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 1, 0, 1,
+            rcmp_vector_array_idxs_sum, rcmp_vector_array_idxs_sum);
+    } else if (!strcmp(vp_algorithm, "PPMAXSUMS")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 0, 0, 1,
+            rcmp_vector_array_idxs_max, rcmp_vector_array_idxs_sum);
+    } else if (!strcmp(vp_algorithm, "PPSUMSUMS")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 0, 0, 1,
+            rcmp_vector_array_idxs_sum, rcmp_vector_array_idxs_sum);
+    } else if (!strcmp(vp_algorithm, "CPMAXSUMRS")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 1, 1, 1,
+            rcmp_vector_array_idxs_max, rcmp_vector_array_idxs_sum);
+    } else if (!strcmp(vp_algorithm, "CPSUMSUMRS")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 1, 1, 1,
+            rcmp_vector_array_idxs_sum, rcmp_vector_array_idxs_sum);
+    } else if (!strcmp(vp_algorithm, "PPMAXSUMRS")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 0, 1, 1,
+            rcmp_vector_array_idxs_max, rcmp_vector_array_idxs_sum);
+    } else if (!strcmp(vp_algorithm, "PPSUMSUMRS")) {
+        retval = solve_vp_problem_HETERO_MCB(vp_prob, 2, 0, 1, 1,
+            rcmp_vector_array_idxs_sum, rcmp_vector_array_idxs_sum);
     } else {
         fprintf(stderr, "Unknown vp_algorithm '%s'\n", vp_algorithm);
         exit(1);

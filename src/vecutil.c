@@ -19,6 +19,7 @@ vp_problem new_vp_problem(float yield)
         (float **)calloc(vp_prob->num_bins, sizeof(float *));
     vp_prob->mapping = (int *)calloc(vp_prob->num_items, sizeof(int));
     vp_prob->loads = (float **)calloc(vp_prob->num_bins, sizeof(float *));
+    vp_prob->capacities = (float **)calloc(vp_prob->num_bins, sizeof(float *));
     vp_prob->misc = NULL;
     for (i = 0; i< vp_prob->num_items; i++) {
         vp_prob->items[i] = 
@@ -37,14 +38,18 @@ vp_problem new_vp_problem(float yield)
         vp_prob->bins[i] = 
             (float *)calloc(vp_prob->num_dims, sizeof(float));
         vp_prob->loads[i] = (float *)calloc(vp_prob->num_dims, sizeof(float));
+        vp_prob->capacities[i] = (float *)calloc(vp_prob->num_dims, sizeof(float));
         for (j = 0; j < flex_prob->num_rigid; j++) {
             vp_prob->bins[i][j] = flex_prob->rigid_capacities[i][j];
             vp_prob->loads[i][j] = 0.0;
+            vp_prob->capacities[i][j] = flex_prob->rigid_capacities[i][j];
         }
         for (j = 0; j < flex_prob->num_fluid; j++) {
             vp_prob->bins[i][flex_prob->num_rigid + j] = 
                 flex_prob->fluid_capacities[i][j];
             vp_prob->loads[i][flex_prob->num_rigid + j] = 0.0;
+            vp_prob->capacities[i][flex_prob->num_rigid + j] = 
+                flex_prob->fluid_capacities[i][j];
         }
     }
     return vp_prob;
@@ -61,8 +66,10 @@ void free_vp_problem(vp_problem vp_prob)
     for (i = 0; i < vp_prob->num_bins; i++) {
         free(vp_prob->bins[i]);
         free(vp_prob->loads[i]);
+        free(vp_prob->capacities[i]);
     }
     free(vp_prob->loads);
+    free(vp_prob->capacities);
     free(vp_prob->misc);
     free(vp_prob->bins);
     free(vp_prob);
@@ -73,9 +80,9 @@ int vp_vector_can_fit_in_bin(vp_problem vp_prob, int v, int b)
 {
     int i;
     for (i = 0; i < vp_prob->num_dims; i++) {
-        if (vp_prob->loads[b][i] + vp_prob->items[v][i] > 
-            vp_prob->bins[b][i])
+        if (vp_prob->items[v][i] > vp_prob->capacities[b][i]) {
             return 0;
+        }
     }
     return 1;
 }
@@ -86,6 +93,7 @@ void vp_put_vector_in_bin(vp_problem vp_prob, int v, int b)
     vp_prob->mapping[v] = b;
     for (i = 0; i < vp_prob->num_dims; i++) {
         vp_prob->loads[b][i] += vp_prob->items[v][i];
+        vp_prob->capacities[b][i] -= vp_prob->items[v][i];
     }
 
 }

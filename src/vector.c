@@ -168,9 +168,20 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, int isCP,
         if (i < num_unmapped_vectors) {
 
             // compute bin permutation
-            // FIXME: in next version this will be reverse order by capacity...
             qsort_r(dim_perm, vp_prob->num_dims, sizeof(int), 
-                vp_prob->loads[j], cmp_float_array_idxs);
+                vp_prob->loads[b], cmp_float_array_idxs);
+
+#if 0
+            printf("sort of dims: (");
+            for (j = 0; j < vp_prob->num_dims; j++) {
+                printf("%.3f ", vp_prob->loads[b][j]);
+            }
+            printf("), (");
+            for (j = 0; j < vp_prob->num_dims; j++) {
+                printf("%d ", dim_perm[j]);
+            }
+            printf(")\n");
+#endif
 
             // compute bin dim positions
             j = 0;
@@ -215,15 +226,46 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, int isCP,
                 cmp_val = cmp_int_arrays_lex(w, v_perm, best_perm);
 
                 va.vectors = vp_prob->items;
+
 #ifdef NO_QSORT_R
                 global_qsort_vptr = &va;
                 if (cmp_val < 0 || (0 == cmp_val && 
                     cmp_item_idxs(&v, &best_v) < 0))
 #else
-                if (cmp_val > 0 || (0 == cmp_val && 
+                if (cmp_val < 0 || (0 == cmp_val && 
                     cmp_item_idxs(&va, &v, &best_v) < 0))
 #endif
                 {
+#if 0
+                    printf("bin state is: (");
+                    for (j = 0; j < vp_prob->num_dims; j++) {
+                        printf("%.3f ", vp_prob->loads[b][j]);
+                    }
+                    printf ("), (");
+                    for (j = 0; j < vp_prob->num_dims; j++) {
+                        printf("%d ", bin_dim_positions[j]);
+                    }
+                    printf(")\n");
+                    printf("cmp is (%d, %d)\n", cmp_val, cmp_item_idxs(&va, &v, &best_v));
+                    printf("selecting item %d (", v);
+                    for (j = 0; j < vp_prob->num_dims; j++) {
+                        printf("%.3f ", vp_prob->items[v][j]);
+                    }
+                    printf("; ");
+                    for (j = 0; j < w; j++) {
+                        printf("%d ", v_perm[j]);
+                    }
+                    printf(") over item %d (", best_v);
+                    for (j = 0; j < vp_prob->num_dims; j++) {
+                        printf("%.3f ", vp_prob->items[best_v][j]);
+                    }
+                    printf("; ");
+                    for (j = 0; j < w; j++) {
+                        printf("%d ", best_perm[j]);
+                    }
+                    printf(")\n");
+#endif
+
                     best_v = v;
                     best_v_idx = i;
                     tmp_perm = best_perm;
@@ -279,28 +321,28 @@ int solve_vp_problem(vp_problem vp_prob, char *vp_algorithm)
         retval = solve_vp_problem_FITD(vp_prob, BEST_FIT, 
             rcmp_vector_array_idxs_sum);
     } else if (!strcmp(vp_algorithm, "CPMAX")) {
-        retval = solve_vp_problem_MCB(vp_prob, 1, 1, 
+        retval = solve_vp_problem_MCB(vp_prob, 2, 1, 
             rcmp_vector_array_idxs_max);
     } else if (!strcmp(vp_algorithm, "CPSUM")) {
-        retval = solve_vp_problem_MCB(vp_prob, 1, 1, 
+        retval = solve_vp_problem_MCB(vp_prob, 2, 1, 
             rcmp_vector_array_idxs_sum);
     } else if (!strcmp(vp_algorithm, "CPMAXRATIO")) {
-        retval = solve_vp_problem_MCB(vp_prob, 1, 1, 
+        retval = solve_vp_problem_MCB(vp_prob, 2, 1, 
             rcmp_vector_array_idxs_maxratio);
     } else if (!strcmp(vp_algorithm, "CPMAXDIFF")) {
-        retval = solve_vp_problem_MCB(vp_prob, 1, 1, 
+        retval = solve_vp_problem_MCB(vp_prob, 2, 1, 
             rcmp_vector_array_idxs_maxdiff);
     } else if (!strcmp(vp_algorithm, "PPMAX")) {
-        retval = solve_vp_problem_MCB(vp_prob, 1, 0, 
+        retval = solve_vp_problem_MCB(vp_prob, 2, 0, 
             rcmp_vector_array_idxs_max);
     } else if (!strcmp(vp_algorithm, "PPSUM")) {
-        retval = solve_vp_problem_MCB(vp_prob, 1, 0, 
+        retval = solve_vp_problem_MCB(vp_prob, 2, 0, 
             rcmp_vector_array_idxs_sum);
     } else if (!strcmp(vp_algorithm, "PPMAXRATIO")) {
-        retval = solve_vp_problem_MCB(vp_prob, 1, 0,
+        retval = solve_vp_problem_MCB(vp_prob, 2, 0,
             rcmp_vector_array_idxs_maxratio);
     } else if (!strcmp(vp_algorithm, "PPMAXDIFF")) {
-        retval = solve_vp_problem_MCB(vp_prob, 1, 0, 
+        retval = solve_vp_problem_MCB(vp_prob, 2, 0, 
             rcmp_vector_array_idxs_maxdiff);
     } else {
         fprintf(stderr, "Unknown vp_algorithm '%s'\n", vp_algorithm);
