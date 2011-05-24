@@ -92,36 +92,16 @@ int GREEDY_compare_S7(const void *x, const void *y)
     return CMP(sum_x, sum_y);
 }
 
-void GREEDY_sort_services(const char *S, int *sortmap)
+void GREEDY_sort_services(int (*cmp_items)(const void *, const void *), 
+    int *sortmap)
 {
     int i;
-    int (*compar)(const void *, const void *);
-
-    // Select the appropriate sorting routine
-    if (!strcmp(S, "S1")) {
-        compar = GREEDY_compare_S1;
-    } else if (!strcmp(S, "S2")) {
-        compar = GREEDY_compare_S2;
-    } else if (!strcmp(S, "S3")) {
-        compar = GREEDY_compare_S3;
-    } else if (!strcmp(S, "S4")) {
-        compar = GREEDY_compare_S4;
-    } else if (!strcmp(S, "S5")) {
-        compar = GREEDY_compare_S5;
-    } else if (!strcmp(S, "S6")) {
-        compar = GREEDY_compare_S6;
-    } else if (!strcmp(S, "S7")) {
-        compar = GREEDY_compare_S7;
-    } else {
-        fprintf(stderr,"Greedy algorithm: unknown sorting procedure '%s'\n",S);
-        exit(1);
-    }
 
     // Initialize index array with the original order
     for (i = 0; i < flex_prob->num_services; i++) sortmap[i] = i;
 
     // Sort the jobs
-    qsort(sortmap, flex_prob->num_services, sizeof(int), compar);
+    qsort(sortmap, flex_prob->num_services, sizeof(int), cmp_items);
 
     return;
 }
@@ -273,30 +253,7 @@ int GREEDY_pick_server_P7(int service)
     return picked;
 }
 
-int GREEDY_pick_server(const char *P, int service)
-{
-    if (!strcmp(P,"P1")) {
-        return GREEDY_pick_server_P1(service);
-    } else if (!strcmp(P,"P2")) {
-        return GREEDY_pick_server_P2(service);
-    } else if (!strcmp(P,"P3")) {
-        return GREEDY_pick_server_P3(service);
-    } else if (!strcmp(P,"P4")) {
-        return GREEDY_pick_server_P4(service);
-    } else if (!strcmp(P,"P5")) {
-        return GREEDY_pick_server_P5(service);
-    } else if (!strcmp(P,"P6")) {
-        return GREEDY_pick_server_P6(service);
-    } else if (!strcmp(P,"P7")) {
-        return GREEDY_pick_server_P7(service);
-    }
-
-    fprintf(stderr, "Greedy algorithm: unknown picking procedure '%s'\n", P);
-    exit(1);
-    return -1;
-}
-
-void GREEDY_compute_mapping(const char *P, int *sortmap, 
+void GREEDY_compute_mapping(int (*pick_server)(int), int *sortmap, 
         flexsched_solution flex_soln)
 {
     int i, j; 
@@ -305,7 +262,7 @@ void GREEDY_compute_mapping(const char *P, int *sortmap,
 
     for (i = 0; i < flex_prob->num_services; i++) {
         service = sortmap[i];
-        server = GREEDY_pick_server(P, service);
+        server = pick_server(service);
 
         if (-1 == server) return;
         
@@ -321,21 +278,25 @@ void GREEDY_compute_mapping(const char *P, int *sortmap,
 
 }
 
-flexsched_solution GREEDY_scheduler(char *S, char *P, char *ignore)
+flexsched_solution GREEDY_solver(int (*cmp_items)(const void *, const void *), 
+    int (*pick_server)(int))
 {
     int sortmap[flex_prob->num_services];
-    char scheduler_name[20];
-    sprintf(scheduler_name, "GREEDY_%s_%s", S, P);
-    flexsched_solution flex_soln = new_flexsched_solution(scheduler_name);
+    flexsched_solution flex_soln = new_flexsched_solution();
+
+    if (NULL == cmp_items || NULL == pick_server) {
+        fprintf(stderr, "Invalid GREEDY sorting or picking function.\n");
+        return flex_soln;
+    }
 
     // needed for _fast
     initialize_global_server_loads();
 
     // Sort the services appropriately
-    GREEDY_sort_services(S, sortmap);
+    GREEDY_sort_services(cmp_items, sortmap);
 
     // Map each service to a particular host
-    GREEDY_compute_mapping(P, sortmap, flex_soln);
+    GREEDY_compute_mapping(pick_server, sortmap, flex_soln);
 
     // greedy has to do this since it doesn't have a concept of allocation
     if (flex_soln->success) {
@@ -348,13 +309,56 @@ flexsched_solution GREEDY_scheduler(char *S, char *P, char *ignore)
     return flex_soln;
 }
 
-flexsched_solution METAGREEDY_scheduler(
-    char *ignore1, char *ignore2, char *ignore3)
+flexsched_solution GREEDY_scheduler(char *name, char **options) {
+    int (*cmp_items)(const void *, const void *) = NULL;
+    int (*pick_server)(int) = NULL;
+    char **opt;
+
+    for (opt = options; *opt; opt++) {
+        if (!strcmp(*opt, "S1")) {
+            cmp_items = GREEDY_compare_S1;
+        } else if (!strcmp(*opt, "S2")) {
+            cmp_items = GREEDY_compare_S2;
+        } else if (!strcmp(*opt, "S3")) {
+            cmp_items = GREEDY_compare_S3;
+        } else if (!strcmp(*opt, "S4")) {
+            cmp_items = GREEDY_compare_S4;
+        } else if (!strcmp(*opt, "S5")) {
+            cmp_items = GREEDY_compare_S5;
+        } else if (!strcmp(*opt, "S6")) {
+            cmp_items = GREEDY_compare_S6;
+        } else if (!strcmp(*opt, "S7")) {
+            cmp_items = GREEDY_compare_S7;
+        } else if (!strcmp(*opt, "P1")) {
+            pick_server = GREEDY_pick_server_P1;
+        } else if (!strcmp(*opt, "P2")) {
+            pick_server = GREEDY_pick_server_P2;
+        } else if (!strcmp(*opt, "P3")) {
+            pick_server = GREEDY_pick_server_P3;
+        } else if (!strcmp(*opt, "P4")) {
+            pick_server = GREEDY_pick_server_P4;
+        } else if (!strcmp(*opt, "P5")) {
+            pick_server = GREEDY_pick_server_P5;
+        } else if (!strcmp(*opt, "P6")) {
+            pick_server = GREEDY_pick_server_P6;
+        } else if (!strcmp(*opt, "P7")) {
+            pick_server = GREEDY_pick_server_P7;
+        }
+    }
+
+    return GREEDY_solver(cmp_items, pick_server);
+}
+
+flexsched_solution METAGREEDY_scheduler(char *name, char **options)
 {
     flexsched_solution flex_soln = new_flexsched_solution("METAGREEDY");
 
-    char *sorting[] = {"S1","S2","S3","S4","S5","S6","S7",NULL};
-    char *picking[] = {"P1","P2","P3","P4","P5","P6","P7",NULL};
+    int (*sorting[])(const void *, const void *) = {GREEDY_compare_S1, 
+        GREEDY_compare_S2, GREEDY_compare_S3, GREEDY_compare_S4, 
+        GREEDY_compare_S5, GREEDY_compare_S6, GREEDY_compare_S7, NULL};
+    int (*picking[])(int) = {GREEDY_pick_server_P1, GREEDY_pick_server_P2, 
+        GREEDY_pick_server_P3, GREEDY_pick_server_P4, GREEDY_pick_server_P5,
+        GREEDY_pick_server_P6, GREEDY_pick_server_P7, NULL};
     int i, is, ip;
 
     flexsched_solution curr_soln = NULL;
@@ -365,7 +369,7 @@ flexsched_solution METAGREEDY_scheduler(
         for (ip = 0; picking[ip]; ip++) {
 
             // call the GREEDY scheduler
-            curr_soln = GREEDY_scheduler(sorting[is], picking[ip], NULL);
+            curr_soln = GREEDY_solver(sorting[is], picking[ip]);
 
             // If worked and improved, then great
             if (curr_soln->success) {
@@ -397,12 +401,18 @@ flexsched_solution METAGREEDY_scheduler(
     return flex_soln;
 }
 
-flexsched_solution METAGREEDYLIGHT_scheduler(char *S, char *P, char *ignore)
+flexsched_solution METAGREEDYLIGHT_scheduler(char *name, char **options)
 {
     flexsched_solution flex_soln = new_flexsched_solution("METAGREEDYLIGHT");
 
-    char *sorting[] = {"S3","S2","S5","S7","S6","S2","S3","S6","S5",NULL};
-    char *picking[] = {"P1","P1","P1","P1","P1","P2","P2","P2","P4",NULL};
+    int (*sorting[])(const void *, const void *) = {GREEDY_compare_S3, 
+        GREEDY_compare_S2, GREEDY_compare_S5, GREEDY_compare_S7, 
+        GREEDY_compare_S6, GREEDY_compare_S2, GREEDY_compare_S3,
+        GREEDY_compare_S6, GREEDY_compare_S5, NULL};
+    int (*picking[])(int) = {GREEDY_pick_server_P1, GREEDY_pick_server_P1, 
+        GREEDY_pick_server_P1, GREEDY_pick_server_P1, GREEDY_pick_server_P1,
+        GREEDY_pick_server_P2, GREEDY_pick_server_P2, GREEDY_pick_server_P2,
+        GREEDY_pick_server_P4, NULL};
     int i, isp;
 
     flexsched_solution curr_soln = NULL;
@@ -412,7 +422,7 @@ flexsched_solution METAGREEDYLIGHT_scheduler(char *S, char *P, char *ignore)
     for (isp = 0; sorting[isp] && picking[isp]; isp++) {
 
         // call the GREEDY scheduler
-        curr_soln = GREEDY_scheduler(sorting[isp], picking[isp], NULL);
+        curr_soln = GREEDY_solver(sorting[isp], picking[isp]);
 
         // If worked and improved, then great
         if (curr_soln->success) {

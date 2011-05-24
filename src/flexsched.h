@@ -42,8 +42,6 @@
 #define RCMP(x, y) (((x) == (y)) ? 0 : (((x) < (y)) ? 1 : -1))
 #endif
 
-#define INTEGER  0
-#define RATIONAL 1
 
 /*************************************/
 /****** STRUCTURES AND TYPEDEFS ******/
@@ -66,7 +64,6 @@ typedef struct flexsched_problem_struct {
 typedef struct flexsched_solution_struct {
     flexsched_problem prob;
     // output
-    char *algorithm;
     int success;
     int *mapping;
     float *scaled_yields;
@@ -93,15 +90,6 @@ struct int_float {
   float f;
 };
 #endif
-
-/* Data structure describing a scheduling algorithm implementation */
-struct scheduler_t {
-    char *name;
-    flexsched_solution (*func)(char *, char *, char*);
-    char *arg1;
-    char *arg2;
-    char *arg3;
-};
 
 /******************************/
 /****** GLOBAL VARIABLES ******/
@@ -140,7 +128,7 @@ float compute_average_yield(flexsched_solution);
 float compute_server_sum_alloc(flexsched_solution, int);
 float compute_utilization(flexsched_solution);
 int sanity_check(flexsched_solution);
-flexsched_solution new_flexsched_solution(const char *);
+flexsched_solution new_flexsched_solution();
 void free_flexsched_solution(flexsched_solution);
 
 /*
@@ -152,15 +140,14 @@ int find_maximum_subset(vp_problem, int *, int, int **, int);
 
 
 /* Scheduler function prototypes */
-flexsched_solution LPBOUND_scheduler(char*, char*, char*);
-flexsched_solution MILP_scheduler(char*, char*, char*);
-flexsched_solution RRND_scheduler(char*, char*, char*);
-flexsched_solution RRNZ_scheduler(char*, char*, char*);
-flexsched_solution GREEDY_scheduler(char*, char*, char*);
-flexsched_solution METAGREEDY_scheduler(char*, char*, char*);
-flexsched_solution METAGREEDYLIGHT_scheduler(char*, char*, char*);
-flexsched_solution VP_scheduler(char*, char*, char*);
+flexsched_solution GREEDY_scheduler(char *, char **);
+flexsched_solution METAGREEDY_scheduler(char *, char **);
+flexsched_solution METAGREEDYLIGHT_scheduler(char *, char **);
+flexsched_solution LPBOUND_scheduler(char*, char **);
+flexsched_solution MILP_scheduler(char *, char **);
+flexsched_solution LPROUNDING_scheduler(char *, char **);
+flexsched_solution VP_scheduler(char *, char **);
+
 flexsched_solution HVP_scheduler(char*, char*, char*);
-flexsched_solution GA_scheduler(char*, char*, char*);
 
 #endif

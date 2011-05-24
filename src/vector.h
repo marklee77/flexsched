@@ -62,5 +62,6 @@ qsort_cmp_func rcmp_vector_array_idxs_maxdiff;
 qsort_cmp_func cmp_float_array_idxs;
 qsort_cmp_func rcmp_float_array_idxs;
 
+qsort_cmp_func *get_vp_cmp_func(char *);
 
 #endif

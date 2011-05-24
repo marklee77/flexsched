@@ -6,6 +6,9 @@
 /* is contained in its own file                            */
 /***********************************************************/
 
+#define RATIONAL 1
+#define INTEGER 0
+
 #define LP_IGNORE 666
 
 // Number of variables (called "columns"): 
@@ -417,10 +420,9 @@ int solve_linear_program(glp_prob *prob, int rational)
 }
 #endif
 
-flexsched_solution LPBOUND_scheduler(
-    char *ignore1, char *ignore2, char *ignore3)
+flexsched_solution LPBOUND_scheduler(char *name, char **options)
 {
-    flexsched_solution flex_soln = new_flexsched_solution("LPBOUND");
+    flexsched_solution flex_soln = new_flexsched_solution();
     double objval;
 
 // create and solve LP, get objective value
@@ -451,13 +453,12 @@ flexsched_solution LPBOUND_scheduler(
     return flex_soln;
 }
 
-flexsched_solution MILP_scheduler(
-    char *ignore1, char *ignore2, char *ignore3)
+flexsched_solution MILP_scheduler(char *name, char **options)
 {
     int i, j;
     int status;
     double val;
-    flexsched_solution flex_soln = new_flexsched_solution("MILP");
+    flexsched_solution flex_soln = new_flexsched_solution();
 
 #ifdef CPLEX
     CPXENVptr env;
@@ -509,8 +510,8 @@ flexsched_solution MILP_scheduler(
  *      - RRND: LPROUNDING(0.0)
  *      - RRNZ: LPROUNDING(xxx)
  */
-void LPROUNDING_scheduler(
-    flexsched_solution flex_soln, float min_weight)
+// FIXME: why do we need to call the optimizer or get fluid resource overload?
+void LPROUNDING_solver(flexsched_solution flex_soln, float min_weight)
 {
     int i, j;
     float weights[flex_prob->num_servers];
@@ -546,7 +547,6 @@ void LPROUNDING_scheduler(
 #else
             val = glp_get_col_prim(prob, LP_E_IJ_COL);
 #endif
-            printf("%f\n", val);
             x = MAX(val, min_weight);
             if (service_can_fit_on_server_fast(i, j) && x > 0.0) {
                 feasible_servers[num_feasible_servers] = j;
@@ -591,19 +591,17 @@ void LPROUNDING_scheduler(
     return;
 }
 
-flexsched_solution RRND_scheduler(
-    char *ignore1, char *ignore2, char *ignore3)
-{
-    flexsched_solution flex_soln = new_flexsched_solution("RRND");
-    LPROUNDING_scheduler(flex_soln, 0.0);
-    return flex_soln;
-}
+flexsched_solution LPROUNDING_scheduler(char *name, char **options) {
+    flexsched_solution flex_soln = new_flexsched_solution();
 
-flexsched_solution RRNZ_scheduler(
-    char *ignore1, char *ignore2, char *ignore3)
-{
-    flexsched_solution flex_soln = new_flexsched_solution("RRNZ");
-    LPROUNDING_scheduler(flex_soln, 0.01);
+    if (!strcmp(name, "RRND")) {
+        LPROUNDING_solver(flex_soln, 0.0);
+    } else if (!strcmp(name, "RRNZ")) {
+        LPROUNDING_solver(flex_soln, 0.01);
+    } else {
+        fprintf(stderr, "LPROUNDING scheduler doesn't recognize %s!\n", name);
+    }
+
     return flex_soln;
 }
 

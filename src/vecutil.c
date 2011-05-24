@@ -335,3 +335,34 @@ int rcmp_float_array_idxs(void *vals_ptr, const void *x_ptr, const void *y_ptr)
 }
 #endif
 
+qsort_cmp_func *get_vp_cmp_func(char *cmp_name) {
+    if (NULL == cmp_name) {
+        return NULL;
+    } else if (!strcmp(cmp_name, "ALEX")) {
+        return cmp_vector_array_idxs_lex;
+    } else if (!strcmp(cmp_name, "AMAX")) {
+        return cmp_vector_array_idxs_max;
+    } else if (!strcmp(cmp_name, "ASUM")) {
+        return cmp_vector_array_idxs_sum;
+    } else if (!strcmp(cmp_name, "AMAXRATIO")) {
+        return cmp_vector_array_idxs_maxratio;
+    } else if (!strcmp(cmp_name, "AMAXDIFF")) {
+        return cmp_vector_array_idxs_maxdiff;
+    } else if (!strcmp(cmp_name, "DLEX")) {
+        return rcmp_vector_array_idxs_lex;
+    } else if (!strcmp(cmp_name, "DMAX")) {
+        return rcmp_vector_array_idxs_max;
+    } else if (!strcmp(cmp_name, "DSUM")) {
+        return rcmp_vector_array_idxs_sum;
+    } else if (!strcmp(cmp_name, "DMAXRATIO")) {
+        return rcmp_vector_array_idxs_maxratio;
+    } else if (!strcmp(cmp_name, "DMAXDIFF")) {
+        return rcmp_vector_array_idxs_maxdiff;
+    } else {
+        fprintf(stderr, "Unknown comparison '%s'\n", cmp_name);
+        exit(1);
+    }   
+
+    return NULL;
+}
+

@@ -535,7 +535,7 @@ int sanity_check(flexsched_solution flex_soln)
 
 }
 
-flexsched_solution new_flexsched_solution(const char *algorithm) 
+flexsched_solution new_flexsched_solution() 
 {
     int i;
     flexsched_solution flex_soln =
@@ -547,7 +547,6 @@ flexsched_solution new_flexsched_solution(const char *algorithm)
         exit(1);
     }
 
-    flex_soln->algorithm = strdup(algorithm);
     if (!(flex_soln->mapping = 
         (int *)calloc(flex_prob->num_services, sizeof(int)))) {
         fprintf(stderr, 
@@ -569,7 +568,6 @@ flexsched_solution new_flexsched_solution(const char *algorithm)
 void free_flexsched_solution(flexsched_solution flex_soln)
 {
     if (!flex_soln) return;
-    free(flex_soln->algorithm);
     free(flex_soln->mapping);
     free(flex_soln->scaled_yields);
     free(flex_soln);

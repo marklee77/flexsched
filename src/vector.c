@@ -40,10 +40,11 @@ void vp_compute_degrees_of_dominance(vp_problem vp_prob)
  *
  * Returns the number of used bins
  */
-int solve_vp_problem_FITD(vp_problem vp_prob, int fit_type, 
+int solve_vp_problem_FITD(vp_problem vp_prob, int args[], 
     qsort_cmp_func *cmp_item_idxs)
 {
-    int i, j, k;
+    int i, j;
+    int fit_type = args[0];
     int sortmap[vp_prob->num_items];
     float sumloads[vp_prob->num_bins];
     struct vector_array_t va;
@@ -89,10 +90,12 @@ int solve_vp_problem_FITD(vp_problem vp_prob, int fit_type,
 // solve vp problem using Permutation Pack or Choose Pack
 // FIXME: the comparitor doesn't really need to do all this playing around
 // with pointers since we don't sort the vectors with qsort anymore...
-int solve_vp_problem_MCB(vp_problem vp_prob, int w, int isCP, 
+int solve_vp_problem_MCB(vp_problem vp_prob, int args[], 
     qsort_cmp_func *cmp_item_idxs)
 {
     int i, j;
+    int isCP = args[0];
+    int w = MIN(args[1], vp_prob->num_dims);
 
     int dim_perm[vp_prob->num_dims];
     int vector_dims[vp_prob->num_items][w];
@@ -284,68 +287,10 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int w, int isCP,
     return num_unmapped_vectors;
 }
     
-/* solve_vp_instance() 
- *  Returns the number of bins used
- */
-int solve_vp_problem(vp_problem vp_prob, char *vp_algorithm)
+void VP_solver(flexsched_solution flex_soln, 
+    int (*solve_vp_problem)(vp_problem, int[], qsort_cmp_func), 
+    int args[], qsort_cmp_func cmp_item_idxs) 
 {
-    int retval;
-    if (!strcmp(vp_algorithm, "FFDLEX")) {
-        retval = solve_vp_problem_FITD(vp_prob, FIRST_FIT, 
-            rcmp_vector_array_idxs_lex);
-    } else if (!strcmp(vp_algorithm, "FFDMAX")) {
-        retval = solve_vp_problem_FITD(vp_prob, FIRST_FIT, 
-            rcmp_vector_array_idxs_max);
-    } else if (!strcmp(vp_algorithm, "FFDSUM")) {
-        retval = solve_vp_problem_FITD(vp_prob, FIRST_FIT, 
-            rcmp_vector_array_idxs_sum);
-    } else if (!strcmp(vp_algorithm, "BFDLEX")) {
-        retval = solve_vp_problem_FITD(vp_prob, BEST_FIT, 
-            rcmp_vector_array_idxs_lex);
-    } else if (!strcmp(vp_algorithm, "BFDMAX")) {
-        retval = solve_vp_problem_FITD(vp_prob, BEST_FIT, 
-            rcmp_vector_array_idxs_max);
-    } else if (!strcmp(vp_algorithm, "BFDSUM")) {
-        retval = solve_vp_problem_FITD(vp_prob, BEST_FIT, 
-            rcmp_vector_array_idxs_sum);
-    } else if (!strcmp(vp_algorithm, "CPMAX")) {
-        retval = solve_vp_problem_MCB(vp_prob, 2, 1, 
-            rcmp_vector_array_idxs_max);
-    } else if (!strcmp(vp_algorithm, "CPSUM")) {
-        retval = solve_vp_problem_MCB(vp_prob, 2, 1, 
-            rcmp_vector_array_idxs_sum);
-    } else if (!strcmp(vp_algorithm, "CPMAXRATIO")) {
-        retval = solve_vp_problem_MCB(vp_prob, 2, 1, 
-            rcmp_vector_array_idxs_maxratio);
-    } else if (!strcmp(vp_algorithm, "CPMAXDIFF")) {
-        retval = solve_vp_problem_MCB(vp_prob, 2, 1, 
-            rcmp_vector_array_idxs_maxdiff);
-    } else if (!strcmp(vp_algorithm, "PPMAX")) {
-        retval = solve_vp_problem_MCB(vp_prob, 2, 0, 
-            rcmp_vector_array_idxs_max);
-    } else if (!strcmp(vp_algorithm, "PPSUM")) {
-        retval = solve_vp_problem_MCB(vp_prob, 2, 0, 
-            rcmp_vector_array_idxs_sum);
-    } else if (!strcmp(vp_algorithm, "PPMAXRATIO")) {
-        retval = solve_vp_problem_MCB(vp_prob, 2, 0,
-            rcmp_vector_array_idxs_maxratio);
-    } else if (!strcmp(vp_algorithm, "PPMAXDIFF")) {
-        retval = solve_vp_problem_MCB(vp_prob, 2, 0, 
-            rcmp_vector_array_idxs_maxdiff);
-    } else {
-        fprintf(stderr, "Unknown vp_algorithm '%s'\n", vp_algorithm);
-        exit(1);
-    }
-    return retval;
-}
-
-/* 
- * VP_scheduler() 
- */
-flexsched_solution VP_scheduler(
-    char *vp_algorithm, char *ignore2, char *ignore3)
-{
-    flexsched_solution flex_soln = new_flexsched_solution(vp_algorithm);
     double yield, yieldlb, yieldub, best_yield;
     vp_problem vp_prob = NULL;
     int i, status;
@@ -356,7 +301,6 @@ flexsched_solution VP_scheduler(
     best_yield = -1.0;
     yield = 0.0;
 
-
     while(yieldub - yieldlb > 0.001) {
         yield = (yieldub + yieldlb) / 2.0;
 
@@ -364,7 +308,7 @@ flexsched_solution VP_scheduler(
         vp_prob = new_vp_problem(yield);
 
         // Solve the VP instance
-        if (solve_vp_problem(vp_prob, vp_algorithm)) {
+        if (solve_vp_problem(vp_prob, args, cmp_item_idxs)) {
             yieldub = yield;
         } else {
             yieldlb = yield;
@@ -379,6 +323,43 @@ flexsched_solution VP_scheduler(
         free_vp_problem(vp_prob);
 
     }
+}
 
+/* 
+ * VP_scheduler() 
+ */
+flexsched_solution VP_scheduler(char *name, char **options)
+{
+    int (*solve_vp_problem)(vp_problem, int [], qsort_cmp_func) = NULL;
+    int args[2];
+    qsort_cmp_func *cmp_item_idxs = NULL;
+    flexsched_solution flex_soln = new_flexsched_solution();
+    char **opt;
+
+    // could be a little more rigorous here...
+    for (opt = options; *opt; opt++) {
+        if (!strcmp(*opt, "FF")) {
+            solve_vp_problem = solve_vp_problem_FITD;
+            args[0] = FIRST_FIT;
+        } else if (!strcmp(*opt, "BF")) {
+            solve_vp_problem = solve_vp_problem_FITD;
+            args[0] = BEST_FIT;
+        } else if (!strcmp(*opt, "PP")) {
+            solve_vp_problem = solve_vp_problem_MCB;
+            args[0] = 0;
+            args[1] = 1; // default W
+        } else if (!strcmp(*opt, "CP")) {
+            solve_vp_problem = solve_vp_problem_MCB;
+            args[0] = 1;
+            args[1] = 1;
+        } else if ('W' == **opt) {
+            args[1] = atoi(*opt + 1);
+        } else {
+            cmp_item_idxs = get_vp_cmp_func(*opt);
+        }
+    }
+
+    VP_solver(flex_soln, solve_vp_problem, args, cmp_item_idxs);
+    
     return flex_soln;
 }
