@@ -147,6 +147,20 @@ int array_argmax(float *array, int size)
     return argmax;
 }
 
+/* array_argmax(): Utility function */
+int array_argmin(float *array, int size)
+{
+    int i;
+    int argmin = 0;
+    float min = array[0];
+    for (i = 1; i < size; i++) 
+        if (array[i] < min) {
+            argmin = i;
+            min = array[i];
+        }
+    return argmin;
+}
+
 /*
  * compute_sum_server_load:  (used for GREEDY)
  *  type: "fluid", "rigid", "fluidmin"

@@ -351,7 +351,7 @@ flexsched_solution GREEDY_scheduler(char *name, char **options) {
 
 flexsched_solution METAGREEDY_scheduler(char *name, char **options)
 {
-    flexsched_solution flex_soln = new_flexsched_solution("METAGREEDY");
+    flexsched_solution flex_soln = new_flexsched_solution();
 
     int (*sorting[])(const void *, const void *) = {GREEDY_compare_S1, 
         GREEDY_compare_S2, GREEDY_compare_S3, GREEDY_compare_S4, 
@@ -391,6 +391,7 @@ flexsched_solution METAGREEDY_scheduler(char *name, char **options)
                         flex_soln->scaled_yields[i] = 
                             curr_soln->scaled_yields[i];
                     }
+                    sprintf(flex_soln->misc_output, "S%d P%d", is+1, ip+1);
                 }
             }
 
@@ -403,7 +404,7 @@ flexsched_solution METAGREEDY_scheduler(char *name, char **options)
 
 flexsched_solution METAGREEDYLIGHT_scheduler(char *name, char **options)
 {
-    flexsched_solution flex_soln = new_flexsched_solution("METAGREEDYLIGHT");
+    flexsched_solution flex_soln = new_flexsched_solution();
 
     int (*sorting[])(const void *, const void *) = {GREEDY_compare_S3, 
         GREEDY_compare_S2, GREEDY_compare_S5, GREEDY_compare_S7, 

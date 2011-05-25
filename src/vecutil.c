@@ -55,6 +55,31 @@ vp_problem new_vp_problem(float yield)
     return vp_prob;
 }
 
+void reset_vp_problem(vp_problem vp_prob) 
+{
+    int i, j;
+    if (vp_prob->misc) {
+        free(vp_prob->misc);
+        vp_prob->misc = NULL;
+    }
+    for (i = 0; i< vp_prob->num_items; i++) {
+        vp_prob->mapping[i] = -1;
+    }
+    for (i = 0; i < vp_prob->num_bins; i++) {
+        for (j = 0; j < flex_prob->num_rigid; j++) {
+            vp_prob->loads[i][j] = 0.0;
+            vp_prob->capacities[i][j] = flex_prob->rigid_capacities[i][j];
+        }
+        for (j = 0; j < flex_prob->num_fluid; j++) {
+            vp_prob->loads[i][flex_prob->num_rigid + j] = 0.0;
+            vp_prob->capacities[i][flex_prob->num_rigid + j] = 
+                flex_prob->fluid_capacities[i][j];
+        }
+    }
+
+    return;
+}
+
 void free_vp_problem(vp_problem vp_prob)
 {
     int i;
@@ -365,4 +390,3 @@ qsort_cmp_func *get_vp_cmp_func(char *cmp_name) {
 
     return NULL;
 }
-

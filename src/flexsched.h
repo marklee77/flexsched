@@ -147,7 +147,7 @@ flexsched_solution LPBOUND_scheduler(char*, char **);
 flexsched_solution MILP_scheduler(char *, char **);
 flexsched_solution LPROUNDING_scheduler(char *, char **);
 flexsched_solution VP_scheduler(char *, char **);
-
-flexsched_solution HVP_scheduler(char*, char*, char*);
+flexsched_solution HVP_scheduler(char *, char **);
+flexsched_solution METAHVP_scheduler(char *, char **);
 
 #endif

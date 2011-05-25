@@ -836,5 +836,13 @@ void maximize_average_yield_given_minimum(
         flex_soln->scaled_yields[i] = val;
     }
 
+#ifdef CPLEX
+    // FIXME: how to delete cplex lp?
+#else
+    glp_erase_prob(prob);
+    glp_delete_prob(prob);
+    glp_free_env();
+#endif
+
     return;
 }

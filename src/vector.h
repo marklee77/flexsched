@@ -17,10 +17,12 @@ typedef struct vp_problem_struct {
     float **loads; // useful scratch variable
     float **capacities; // useful scratch variable
     float *misc; // scratch -- inelegant but useful...
+    char misc_output[100];
 } *vp_problem; 
 
 // function prototypes
 vp_problem new_vp_problem(float);
+void reset_vp_problem(vp_problem);
 void free_vp_problem(vp_problem);
 
 int vp_vector_can_fit_in_bin(vp_problem, int, int);

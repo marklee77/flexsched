@@ -331,7 +331,7 @@ void VP_solver(flexsched_solution flex_soln,
 flexsched_solution VP_scheduler(char *name, char **options)
 {
     int (*solve_vp_problem)(vp_problem, int [], qsort_cmp_func) = NULL;
-    int args[2];
+    int args[2] = {0, 0};
     qsort_cmp_func *cmp_item_idxs = NULL;
     flexsched_solution flex_soln = new_flexsched_solution();
     char **opt;

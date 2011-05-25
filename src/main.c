@@ -12,13 +12,15 @@ struct implemented_scheduler_t implemented_schedulers[] = {
     {"GREEDY",          GREEDY_scheduler,          1},
     {"METAGREEDY",      METAGREEDY_scheduler,      1},
     {"METAGREEDYLIGHT", METAGREEDYLIGHT_scheduler, 1},
-    {"MILP",            MILP_scheduler,       1},
-    {"LPBOUND",         LPBOUND_scheduler,    0},
-    {"RRND",            LPROUNDING_scheduler, 1},
-    {"RRNZ",            LPROUNDING_scheduler, 1},
-    {"VP",              VP_scheduler,         1},
+    {"MILP",            MILP_scheduler,            1},
+    {"LPBOUND",         LPBOUND_scheduler,         0},
+    {"RRND",            LPROUNDING_scheduler,      1},
+    {"RRNZ",            LPROUNDING_scheduler,      1},
+    {"VP",              VP_scheduler,              1},
+    {"HVP",             HVP_scheduler,             1},
+    {"METAHVP",         HVP_scheduler,             1},
+    {"OLDMETAHVP",      METAHVP_scheduler,         1},
 /*
-    {"HVP",             HVP_scheduler,        1},
     {"VP_CHEKURI",   VP_scheduler,         "CHEKURI", NULL, NULL},
     {"GA",           GA_scheduler,         "N", "N", "N"},
     {"GAF",          GA_scheduler,         "F", "N", "N"},
@@ -64,13 +66,19 @@ struct scheduler_t **parse_scheduler_list(char *schedulers_string) {
     for (sched = list; *sched; sched++) {
         (*sched)->name = strtok(strdup((*sched)->string), osep);
         (*sched)->func = NULL;
-        (*sched)->active = 1;
+        (*sched)->sanitycheck = 0;
+        (*sched)->active = 0;
         for (j = 0; implemented_schedulers[j].name; j++) {
             if (!strcmp((*sched)->name, implemented_schedulers[j].name)) {
                 (*sched)->func = implemented_schedulers[j].func;
                 (*sched)->sanitycheck = implemented_schedulers[j].sanitycheck;
+                (*sched)->active = 1;
                 break;
             }
+        }
+        if (!(*sched)->active) {
+            fprintf(stderr, "Warning: Scheduler %s not found!\n", 
+                (*sched)->name);
         }
         (*sched)->options = (char **)malloc(sizeof(char *));
         i = 0;
@@ -226,10 +234,10 @@ int main(int argc, char *argv[])
 
         gettimeofday(&time2, NULL);
 
-        if (flex_soln->success && (*sched)->sanitycheck) {
+        if (flex_soln->success) {
 
             // Sanity check the allocation
-            if (sanity_check(flex_soln)) {
+            if ((*sched)->sanitycheck && sanity_check(flex_soln)) {
                 fprintf(stderr,"Invalid allocation\n");
                 exit(1);
             }
@@ -239,7 +247,7 @@ int main(int argc, char *argv[])
             maximize_minimum_then_average_yield(flex_soln);
 
             // Re-Sanity check the allocation
-            if (sanity_check(flex_soln)) {
+            if ((*sched)->sanitycheck && sanity_check(flex_soln)) {
                 fprintf(stderr,"Invalid allocation\n");
                 exit(1);
             }
