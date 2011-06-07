@@ -229,6 +229,8 @@ int solve_linear_program(CPXENVptr env, CPXLPptr lp, int rational)
 
 #else
 
+#define GLPK_TIME_LIMIT 10*60*1000
+
 // GLPK does not use zero indexing, which seems like a waste.
 #define LP_E_IJ_COL ((flex_prob->num_servers)*i+j+1)
 #define LP_Y_IJ_COL ((flex_prob->num_servers)*((flex_prob->num_services)+i)+j+1)

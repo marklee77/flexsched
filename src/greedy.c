@@ -1,99 +1,104 @@
 #include "flexsched.h"
 
+// FIXME: check on ordering...
+// FIXME: this is actually kind of hard to do in a way..., do we need two sets
+// of greedy algs the same way we have 2 sets of vector packing algorithms?
+
 /* Keeping the services in their original order */
-int GREEDY_compare_S1(const void *x, const void *y)
+int cmp_greedy_S1(void *qsort_thunk_vp, const void *xvp, const void *yvp)
 {
     return 0;
 }
 
 /* Sorting the services by decreasing of max fluid needs */
-int GREEDY_compare_S2(const void *x, const void *y)
+int cmp_greedy_S2(void *qsort_thunk_vp, const void *xvp, const void *yvp)
 {
-    return CMP(
-        array_max(flex_prob->fluid_needs[*(int *)x], flex_prob->num_fluid),
-        array_max(flex_prob->fluid_needs[*(int *)y], flex_prob->num_fluid));
+    flexsched_problem_t flex_prob = (flexsched_problem_t)qsort_thunk_vp;
+    int x = *(int *)xvp, y = *(int *)yvp;
+
+    // y is first to make it DECREASING
+    return CMP(float_array_max(flex_prob->total_fluid_needs[y], 
+        flex_prob->num_resources),
+        float_array_max(flex_prob->total_fluid_needs[x], 
+            flex_prob->num_resources));
 }
 
 /* Sorting the services by decreasing sum of fluid needs */
-int GREEDY_compare_S3(const void *x, const void *y)
+int cmp_greedy_S3(void *qsort_thunk_vp, const void *xvp, const void *yvp)
 {
+    flexsched_problem_t flex_prob = (flexsched_problem_t)qsort_thunk_vp;
+    int x = *(int *)xvp, y = *(int *)yvp;
+
+    // y is first to make it DECREASING
+    return CMP(float_array_sum(flex_prob->total_fluid_needs[y], 
+        flex_prob->num_resources),
+        float_array_sum(flex_prob->total_fluid_needs[x], 
+            flex_prob->num_resources));
+}
+
+/* Sorting the services by decreasing max of rigid requirements */
+int cmp_greedy_S4(void *qsort_thunk_vp, const void *xvp, const void *yvp)
+{
+    flexsched_problem_t flex_prob = (flexsched_problem_t)qsort_thunk_vp;
+    int x = *(int *)xvp, y = *(int *)yvp;
+
+    // y is first to make it DECREASING
     return CMP(
-        array_sum(flex_prob->fluid_needs[*(int *)x], flex_prob->num_fluid),
-        array_sum(flex_prob->fluid_needs[*(int *)y], flex_prob->num_fluid));
+        float_array_max(flex_prob->total_rigid_requirements[y], 
+            flex_prob->num_resources),
+        float_array_max(flex_prob->total_rigid_requirements[x], 
+            flex_prob->num_resources));
 }
 
-/* Sorting the services by decreasing max of rigid and constrained fluid need */
-int GREEDY_compare_S4(const void *x, const void *y)
+/* Sorting the services by decreasing sum of rigid requirements */
+int cmp_greedy_S5(void *qsort_thunk_vp, const void *xvp, const void *yvp)
 {
-    int ix = *((int *)x);
-    int iy = *((int *)y);
-
-    float max_rigid_x = 
-        array_max(flex_prob->rigid_needs[ix], flex_prob->num_rigid);
-    float max_rigid_y = 
-        array_max(flex_prob->rigid_needs[iy],flex_prob->num_rigid);
-    float max_constrainedfluid_x = flex_prob->slas[ix] * 
-        array_max(flex_prob->fluid_needs[ix], flex_prob->num_fluid);
-    float max_constrainedfluid_y = flex_prob->slas[iy] * 
-        array_max(flex_prob->fluid_needs[iy], flex_prob->num_fluid);
-
-    return CMP(MAX(max_rigid_x, max_constrainedfluid_x), 
-        MAX(max_rigid_y, max_constrainedfluid_y));
+    // y is first to make it DECREASING
+    return CMP(
+        float_array_sum(flex_prob->total_rigid_requirements[y], 
+            flex_prob->num_resources),
+        float_array_sum(flex_prob->total_rigid_requirements[x], 
+            flex_prob->num_resources));
 }
 
-/* Sorting the services by decreasing sum of rigid and constrained fluid need */
-int GREEDY_compare_S5(const void *x, const void *y)
+/* Sorting by decreasing max of sum rigid requirements and fluid needs*/
+int cmp_greedy_S6(void *qsort_thunk_vp, const void *xvp, const void *yvp)
 {
-    int ix = *((int *)x);
-    int iy = *((int *)y);
+    flexsched_problem_t flex_prob = (flexsched_problem_t)qsort_thunk_vp;
+    int x = *(int *)xvp, y = *(int *)yvp;
+    float xload[flex_prob->num_resources];
+    float yload[flex_prob->num_resources];
+    int i;
 
-    float sum_rigid_x = 
-        array_sum(flex_prob->rigid_needs[ix], flex_prob->num_rigid);
-    float sum_rigid_y = 
-        array_sum(flex_prob->rigid_needs[iy], flex_prob->num_rigid);
-    float sum_constrainedfluid_x = flex_prob->slas[ix] * 
-        array_sum(flex_prob->fluid_needs[ix], flex_prob->num_fluid);
-    float sum_constrainedfluid_y = flex_prob->slas[iy] * 
-        array_sum(flex_prob->fluid_needs[iy], flex_prob->num_fluid);
+    for (i = 0; i < flex_prob->num_resources; i++) {
+        xload[i] = flex_prob->services[x]->total_rigid_requirements[i] +
+            flex_prob->services[x]->total_fluid_needs[i]
+        yload[i] = flex_prob->services[y]->total_rigid_requirements[i] +
+            flex_prob->services[y]->total_fluid_needs[i]
+    }
 
-    return CMP(sum_rigid_x + sum_constrainedfluid_x, 
-        sum_rigid_y + sum_constrainedfluid_y);
+    return CMP(float_array_max(yload, flex_prob->num_resources), 
+        float_array_max(xload, flex_prob->num_resources));
 }
 
-/* Sorting the services by decreasing max of all needs */
-int GREEDY_compare_S6(const void *x, const void *y)
+/* Sorting the services by decreasing sum of all requirements and needs */
+int cmp_greedy_S7(void *qsort_thunk_vp, const void *xvp, const void *yvp)
 {
-    int ix = *((int *)x);
-    int iy = *((int *)y);
+    flexsched_problem_t flex_prob = (flexsched_problem_t)qsort_thunk_vp;
+    int x = *(int *)xvp, y = *(int *)yvp;
 
-    float max_rigid_x = 
-        array_max(flex_prob->rigid_needs[ix], flex_prob->num_rigid);
-    float max_rigid_y = 
-        array_max(flex_prob->rigid_needs[iy], flex_prob->num_rigid);
-    float max_fluid_x = 
-        array_max(flex_prob->fluid_needs[ix], flex_prob->num_fluid);
-    float max_fluid_y = 
-        array_max(flex_prob->fluid_needs[iy], flex_prob->num_fluid);
-
-    return CMP(MAX(max_rigid_x, max_fluid_x), MAX(max_rigid_y, max_fluid_y));
+    return CMP(float_array_sum(flex_prob->services[y]->total_rigid_requirements,
+        flex_prob->num_resources) + 
+        float_array_sum(flex_prob->services[y]->total_fluid_needs, 
+            flex_prob->num_resources),
+        float_array_sum(flex_prob->services[x]->total_rigid_requirements, 
+            flex_prob->num_resources) + 
+        float_array_sum(flex_prob->services[x]->total_fluid_needs, 
+            flex_prob->num_resources));
 }
 
-/* Sorting the services by decreasing sum of all needs */
-int GREEDY_compare_S7(const void *x, const void *y)
-{
-    int ix = *((int *)x);
-    int iy = *((int *)y);
-
-    float sum_x = array_sum(flex_prob->rigid_needs[ix], flex_prob->num_rigid) + 
-        array_sum(flex_prob->fluid_needs[ix],flex_prob->num_fluid);
-    float sum_y = array_sum(flex_prob->rigid_needs[iy],flex_prob->num_rigid) +
-        array_sum(flex_prob->fluid_needs[iy],flex_prob->num_fluid);
-
-    return CMP(sum_x, sum_y);
-}
-
-void GREEDY_sort_services(int (*cmp_items)(const void *, const void *), 
-    int *sortmap)
+void GREEDY_sort_services(int *sortmap, flex_problem_t flex_prob, 
+    int (*cmp_items)(void *, const void *, const void *))
 {
     int i;
 
@@ -101,47 +106,26 @@ void GREEDY_sort_services(int (*cmp_items)(const void *, const void *),
     for (i = 0; i < flex_prob->num_services; i++) sortmap[i] = i;
 
     // Sort the jobs
-    qsort(sortmap, flex_prob->num_services, sizeof(int), cmp_items);
+    qsort_r(sortmap, flex_prob->num_services, sizeof(int), flex_prob, 
+        cmp_items);
 
     return;
 }
 
-int GREEDY_pick_server_P1(int service)
+// most available resource in max fluid need dimension
+int GREEDY_pick_server_P1(flexsched_solution_t flex_soln, int service)
 {
     int i;
-    float load;
-    float minload;
-    int picked;
-  
-    minload = -1.0;
-    picked = -1;
-    for (i=0; i < flex_prob->num_servers; i++) {
-        if (!service_can_fit_on_server_fast(service, i)) continue;
-        load = compute_server_load_in_dimension_fast(i, "fluid", array_argmax(
-            flex_prob->fluid_needs[service], flex_prob->num_fluid));
-        if ((minload == -1.0) || (load < minload)) {
-            minload = load;
-            picked = i; 
-        }    
-    }
-
-    return picked;
-}
-
-int GREEDY_pick_server_P2(int service)
-{
-    int i;
-    float load;
-    float minload;
-    int picked;
-  
-    minload = -1.0;
-    picked = -1;
-    for (i = 0; i < flex_prob->num_servers; i++) {
-        if (!service_can_fit_on_server_fast(service,i)) continue;
-        load = compute_sum_server_load_fast(i, "fluid");
-        if ((minload == -1.0) || (load < minload)) {
-            minload = load;
+    int dim = float_array_argmax(
+        flex_soln->prob->services[service]->total_fluid_needs, 
+        flex_soln->prob->num_resources);
+    float available_resource, max_available_resource = 0.0;
+    int picked = -1;
+    for (i = 0; i < flex_soln->prob->num_servers; i++) {
+        if (!service_can_fit_on_server_fast(flex_soln, service, i)) continue;
+        available_resouce = compute_available_resource_fast(flex_soln, i, dim);
+        if(available_resouce > max_available_resource) {
+            max_available_resouce = available_resource;
             picked = i;
         }
     }
@@ -149,103 +133,133 @@ int GREEDY_pick_server_P2(int service)
     return picked;
 }
 
-int GREEDY_pick_server_P3_P5(int service, const char *mode)
+// new: minimum (sumload / sumresource) *after* placement
+int GREEDY_pick_server_P2(flexsched_solution_t flex_soln, int service)
+{
+    int i, j;
+    float sumload, sumresource;
+    float ratio, minratio = -1.0;
+    int picked -1 ;
+  
+    picked = -1;
+
+    for (i = 0; i < flex_soln->prob->num_servers; i++) {
+        if (!service_can_fit_on_server_fast(flex_soln, service, i)) continue;
+        sumload = 0.0;
+        sumresource = 0.0;
+        for (j = 0; j < flex_soln->prob->num_resources; j++) {
+            sumload += compute_fluid_load_fast(flex_soln, i, j) +
+                flex_soln->prob->services[service]->total_fluid_needs[j];
+            sumresource += compute_available_resource_fast(flex_soln, i, j) -
+                flex_soln->prob->services[service]->total_rigid_requirements[j];
+        }
+        if (sumresource != 0.0) {
+            ratio = sumload / sumresource;
+            if (picked < 0 || ratio < minratio) {
+                minratio = ratio;
+                picked = i;
+            }
+        }
+    }
+
+    if (picked > -1 && minratio < 0.0) {
+        fprintf(stderr, "Error: something went wrong in P2.\n");
+        exit(1);
+    }
+
+    return picked;
+}
+
+// consider largest rigid resource requirement dimension and pick a server based
+// on either best fit or worst fit.
+int GREEDY_pick_server_P3_P5(
+    flexsched_solution_t flex_soln, int service, int mode)
 {
     int i, picked;
-    float objload;
-    float load;
+    int dim = float_array_argmax(
+        flex_soln->prob->services[service]->total_rigid_requirements, 
+            flex_soln->prob->num_resources);
+    float available_resource, obj_available_resource = -1.0;
 
     picked = -1;
-    for (i = 0; i < flex_prob->num_servers; i++) {
-        if (!service_can_fit_on_server_fast(service, i)) continue;
+    for (i = 0; i < flex_soln->prob->num_servers; i++) {
+        if (!service_can_fit_on_server_fast(flex_soln, service, i)) continue;
 
-        if (array_max(flex_prob->rigid_needs[service], flex_prob->num_rigid) > 
-            flex_prob->slas[service] * 
-            array_max(flex_prob->fluid_needs[service], flex_prob->num_fluid)) {
-            load = compute_server_load_in_dimension_fast(i, "rigid", 
-                array_argmax(flex_prob->rigid_needs[service], 
-                    flex_prob->num_rigid));
-        } else {
-            load = compute_server_load_in_dimension_fast(i, "fluidmin", 
-                array_argmax(flex_prob->fluid_needs[service],
-                    flex_prob->num_fluid));
+        available_resource = compute_available_resource_fast(flex_soln, i, dim);
+
+        if (picked < 0 || 
+            (mode == BEST_FIT && available_resource < obj_available_resource) ||
+            (mode == WORST_FIT && available_resource > obj_available_resource)) 
+        {
+            picked = i;
+            obj_available_resource = available_resource;
         }
 
-        if (!strcmp(mode, "bestfit")) {
-            if ((picked == -1) || (load > objload)) {
-                objload = load;
-                picked = i;
-            }
-        } else if (!strcmp(mode, "worstfit")) {
-            if ((picked == -1) || (load < objload)) {
-                objload = load;
-                picked = i;
-            }
-        }
     }
 
     return picked;
 } 
 
-int GREEDY_pick_server_P3(int service)
+int GREEDY_pick_server_P3(flexsched_solution_t flex_soln, int service)
 {
-  return GREEDY_pick_server_P3_P5(service, "bestfit");
+  return GREEDY_pick_server_P3_P5(flex_soln, service, BEST_FIT);
 }
 
-int GREEDY_pick_server_P5(int service)
+int GREEDY_pick_server_P5(flexsched_solution_t flex_soln, int service)
 {
-  return GREEDY_pick_server_P3_P5(service, "worstfit");
+  return GREEDY_pick_server_P3_P5(flex_soln, service, WORST_FIT);
 }
 
-int GREEDY_pick_server_P4_P6(int service, const char *mode)
+// smallest or biggest total available resource
+int GREEDY_pick_server_P4_P6(
+    flexsched_solution_t flex_soln, int service, int mode)
 {
-    int i, picked;
-    float objload = 0.0;
-    float load;
+    int i, j, picked;
+    float sum_available_resource, obj_sum_available_resource = -1.0;
 
     picked = -1;
 
-    for (i=0; i < flex_prob->num_servers; i++) {
+    for (i = 0; i < flex_soln->prob->num_servers; i++) {
+        if (!service_can_fit_on_server_fast(flex_soln, service, i)) continue;
 
-        if (!service_can_fit_on_server_fast(service,i)) continue;
+        sum_available_resource = 0.0
+        for (j = 0; j < flex_soln->prob->num_resources; j++) {
+            sum_available_resource += 
+                compute_available_resource_fast(flex_soln, i, j);
+        }
 
-        load = compute_sum_server_load_fast(i, "rigid") + 
-            compute_sum_server_load_fast(i, "fluidmin");
-
-        if (!strcmp(mode,"bestfit")) {
-            if ((picked == -1) || (load > objload)) {
-                objload = load;
-                picked = i;
-            }
-        } else if (!strcmp(mode,"worstfit")) {
-            if ((picked == -1) || (load < objload)) {
-                objload = load;
-                picked = i;
-            }
+        if (picked < 0 || 
+            (mode == BEST_FIT && 
+                sum_available_resource < obj_sum_available_resource) ||
+            (mode == WORST_FIT && 
+                sum_available_resource > obj_sum_available_resource)) 
+        {
+            picked = i;
+            obj_sum_available_resource = sum_available_resource;
         }
     }
 
     return picked;
 }
 
-int GREEDY_pick_server_P4(int service)
+int GREEDY_pick_server_P4(flexsched_solution_t flex_soln, int service)
 {
-  return GREEDY_pick_server_P4_P6(service, "bestfit");
+  return GREEDY_pick_server_P4_P6(flex_soln, service, BEST_FIT);
 }
 
-int GREEDY_pick_server_P6(int service)
+int GREEDY_pick_server_P6(flexsched_solution_t flex_soln, int service)
 {
-  return GREEDY_pick_server_P4_P6(service, "worstfit");
+  return GREEDY_pick_server_P4_P6(flex_soln, service, WORST_FIT);
 }
 
-int GREEDY_pick_server_P7(int service)
+// first one it can fit on
+int GREEDY_pick_server_P7(flexsched_solution_t flex_soln, int service)
 {
     int i, picked;
 
     picked = -1;
-
     for (i = 0; i < flex_prob->num_servers; i++) {
-        if (!service_can_fit_on_server_fast(service, i)) continue;
+        if (!service_can_fit_on_server_fast(flex_soln, service, i)) continue;
         picked = i;
         break;
     }

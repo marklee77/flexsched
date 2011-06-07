@@ -1,14 +1,13 @@
 #include "flexsched.h"
 
-flexsched_problem flex_prob = NULL;
-
-struct implemented_scheduler_t {
+struct implemented_scheduler_s {
     char *name;
-    flexsched_solution (*func)(char *, char **);
+    flexsched_solution_t (*func)(flexsched_problem_t, char *, char **);
     int sanitycheck;
 };
 
-struct implemented_scheduler_t implemented_schedulers[] = {
+struct implemented_scheduler_s implemented_schedulers[] = {
+/*
     {"GREEDY",          GREEDY_scheduler,          1},
     {"METAGREEDY",      METAGREEDY_scheduler,      1},
     {"METAGREEDYLIGHT", METAGREEDYLIGHT_scheduler, 1},
@@ -20,50 +19,43 @@ struct implemented_scheduler_t implemented_schedulers[] = {
     {"HVP",             HVP_scheduler,             1},
     {"METAHVP",         HVP_scheduler,             1},
     {"OLDMETAHVP",      METAHVP_scheduler,         1},
-/*
-    {"VP_CHEKURI",   VP_scheduler,         "CHEKURI", NULL, NULL},
-    {"GA",           GA_scheduler,         "N", "N", "N"},
-    {"GAF",          GA_scheduler,         "F", "N", "N"},
-    {"GAFF",         GA_scheduler,         "F", "F", "N"},
-    {"GAFFF",        GA_scheduler,         "F", "F", "F"},
 */
     {NULL, NULL, 0}
 };
 
-struct scheduler_t {
+typedef struct call_scheduler_s {
     char *string;
-    flexsched_solution (*func)(char *, char **);
+    flexsched_solution_t (*func)(flexsched_problem_t, char *, char **);
     char *name;
     char **options;
     int active;
     int sanitycheck;
-};
+} *call_scheduler_t;
 
 /* parse_scheduler_list() 
  *    Create a NULL-terminated list of scheduler names from
  *    the list command-line argument
  */
-struct scheduler_t **parse_scheduler_list(char *schedulers_string) {
-    struct scheduler_t **list = NULL;
-    struct scheduler_t **sched;
+call_scheduler_t * parse_scheduler_list(char *scheduler_list) {
+    const char *ssep = " \t", *osep = "_";
+    call_scheduler_t *schedulers = NULL, *sched;
     char *s;
-    char *ssep = " \t";
-    char *osep = "_";
     int i, j;
 
-    list = (struct scheduler_t **)malloc(sizeof(struct scheduler_t *));
-    *list = NULL;
+    schedulers = (call_scheduler_t *)malloc(sizeof(call_scheduler_t));
+    *schedulers = NULL;
     i = 0;
-    for (s = strtok(strdup(schedulers_string), ssep); s; s = strtok(NULL, ssep))
-    {
-        list[i] = (struct scheduler_t *)malloc(sizeof(struct scheduler_t));
-        list[i]->string = s;
+    for (s = strtok(strdup(scheduler_list), ssep); s; s = strtok(NULL, ssep)) {
+        schedulers[i] = 
+            (call_scheduler_t)malloc(sizeof(struct call_scheduler_s));
+        schedulers[i]->string = s;
         i++;
-        list = (struct scheduler_t**)
-            REALLOC(list, (i+1) * sizeof(struct scheduler_t *));
-        list[i] = NULL;
+        schedulers = (call_scheduler_t *)realloc(schedulers, 
+            (i+1) * sizeof(call_scheduler_t));
+        schedulers[i] = NULL;
     }
-    for (sched = list; *sched; sched++) {
+    // kind of stilly, but not all systems offer reentrant strtok
+    for (sched = schedulers; *sched; sched++) {
         (*sched)->name = strtok(strdup((*sched)->string), osep);
         (*sched)->func = NULL;
         (*sched)->sanitycheck = 0;
@@ -83,28 +75,27 @@ struct scheduler_t **parse_scheduler_list(char *schedulers_string) {
         (*sched)->options = (char **)malloc(sizeof(char *));
         i = 0;
         for ((*sched)->options[0] = strtok(NULL, osep); (*sched)->options[i];
-                (*sched)->options[i] = strtok(NULL, osep)) 
-        {
+                (*sched)->options[i] = strtok(NULL, osep)) {
             i++;
             (*sched)->options = 
-                (char **)REALLOC((*sched)->options, (i+1) * sizeof(char *));
+                (char **)realloc((*sched)->options, (i+1) * sizeof(char *));
         }
     }
 
-    return list;
+    return schedulers;
 }
 
-void deactivate_unneeded_schedulers(struct scheduler_t **list, char *file)
+void deactivate_unneeded_schedulers(call_scheduler_t *schedulers, char *file)
 {
     FILE *f;
     char buffer[1024];
-    struct scheduler_t **sched;
+    call_scheduler_t *sched;
 
     // If not output file, then fine
     if (!(f = fopen(file,"r"))) return; 
 
     while (fgets(buffer, 1024, f)) {
-        for (sched = list; *sched; sched++) {
+        for (sched = schedulers; *sched; sched++) {
             if (!strcmp(strtok(buffer, "|"), (*sched)->string)) {
                 (*sched)->active = 0;
                 fprintf(stderr, "Warning: no need to re-run algorithm '%s'\n", 
@@ -118,17 +109,160 @@ void deactivate_unneeded_schedulers(struct scheduler_t **list, char *file)
     return;
 }
 
+server_t new_server(int num_resources) {
+    server_t server;
+    int i;
+
+    if (!(server = (server_t)malloc(sizeof(struct server_s)))) {
+        fprintf(stderr, "Insufficient memory to allocate server!\n");
+        exit(1);
+    }
+
+    if (!(server->unit_capacities = (float *)calloc(num_resources,
+                    sizeof(float)))) {
+        fprintf(stderr, "Insufficient memory to allocate server unit capacities!\n");
+        exit(1);
+    }
+
+    if (!(server->total_capacities = (float *)calloc(num_resources,
+                    sizeof(float)))) {
+        fprintf(stderr, "Insufficient memory to allocate server total capacities!\n");
+        exit(1);
+    }
+
+    return server;
+}
+
+service_t new_service(int num_resources) {
+    service_t service;
+    int i;
+
+    if (!(service = (service_t)malloc(sizeof(struct service_s)))) {
+        fprintf(stderr, "Insufficient memory to allocate service!\n");
+        exit(1);
+    }
+
+    if (!(service->unit_rigid_requirements = (float *)calloc(num_resources,
+                    sizeof(float)))) {
+        fprintf(stderr, "Insufficient memory to allocate service unit rigid_requirements!\n");
+        exit(1);
+    }
+
+    if (!(service->unit_fluid_needs = (float *)calloc(num_resources,
+                    sizeof(float)))) {
+        fprintf(stderr, "Insufficient memory to allocate service unit fluid_needs!\n");
+        exit(1);
+    }
+
+    if (!(service->total_rigid_requirements = (float *)calloc(num_resources,
+                    sizeof(float)))) {
+        fprintf(stderr, "Insufficient memory to allocate service total rigid_requirements!\n");
+        exit(1);
+    }
+
+    if (!(service->total_fluid_needs = (float *)calloc(num_resources,
+                    sizeof(float)))) {
+        fprintf(stderr, "Insufficient memory to allocate service total fluid_needs!\n");
+        exit(1);
+    }
+
+    return service;
+}
+    
+flexsched_problem_t new_flexsched_problem(FILE *input) {
+    flexsched_problem_t flex_prob;
+    int i, j;
+
+    // initialize flex_problem
+    if (!(flex_prob = 
+        (flexsched_problem_t)malloc(sizeof(struct flexsched_problem_s)))) {
+        fprintf(stderr, 
+            "Insufficient memory to allocate flexsched problem structure!\n");
+        exit(1);
+    }
+    /* Parse instance file */
+    fscanf(input,"%d", &flex_prob->num_resources);
+    fscanf(input,"%d", &flex_prob->num_servers);
+    fscanf(input,"%d", &flex_prob->num_services);
+
+    flex_prob->servers = 
+        (server_t *)calloc(flex_prob->num_servers, sizeof(server_t));
+
+    for (i = 0; i < flex_prob->num_servers; i++) {
+        flex_prob->servers[i] = new_server(flex_prob->num_resources);
+        for (j = 0; j < flex_prob->num_resources; j++) 
+            fscanf(input,"%f", &(flex_prob->servers[i]->unit_capacities[j]));
+        for (j = 0; j < flex_prob->num_resources; j++) 
+            fscanf(input,"%f", &(flex_prob->servers[i]->total_capacities[j]));
+    }
+
+    flex_prob->services = 
+        (service_t *)calloc(flex_prob->num_services, sizeof(service_t));
+
+    for (i = 0; i < flex_prob->num_services; i++) {
+        flex_prob->services[i] = new_service(flex_prob->num_resources);
+        for (j = 0; j < flex_prob->num_resources; j++) 
+            fscanf(input,"%f", 
+                &(flex_prob->services[i]->unit_rigid_requirements[j]));
+        for (j = 0; j < flex_prob->num_resources; j++) 
+            fscanf(input,"%f", &(flex_prob->services[i]->unit_fluid_needs[j]));
+        for (j = 0; j < flex_prob->num_resources; j++) 
+            fscanf(input,"%f", 
+                &(flex_prob->services[i]->total_rigid_requirements[j]));
+        for (j = 0; j < flex_prob->num_resources; j++) 
+            fscanf(input,"%f", &(flex_prob->services[i]->total_fluid_needs[j]));
+    }
+
+    return flex_prob;
+}
+
+void free_server(server_t server) {
+    if (!server) return;
+    free(server->unit_capacities);
+    free(server->total_capacities);
+    free(server);
+    return;
+}
+
+void free_service(service_t service) {
+    if (!service) return;
+    free(service->unit_rigid_requirements);
+    free(service->unit_fluid_needs);
+    free(service->total_rigid_requirements);
+    free(service->total_fluid_needs);
+    free(service);
+    return;
+}
+
+void free_flexsched_problem(flexsched_problem_t flex_prob) {
+    int i;
+
+    if (!flex_prob) return;
+
+    for (i = 0; i < flex_prob->num_servers; i++) {
+        free_server(flex_prob->servers[i]);
+    }
+    free(flex_prob->servers);
+    for (i = 0; i < flex_prob->num_services; i++) {
+        free_service(flex_prob->services[i]);
+    }
+    free(flex_prob->services);
+    free(flex_prob);
+}
+
 int main(int argc, char *argv[])
 {
     FILE *input, *output;
-    struct scheduler_t **schedulers, **sched;
+    call_scheduler_t *schedulers, *sched;
 
     int i, j;
     struct timeval time1, time2;
-    flexsched_solution flex_soln = NULL;
+    flexsched_problem_t flex_prob = NULL;
+    flexsched_solution_t flex_soln = NULL;
     double elasped_seconds;
     double non_optimized_average_yield;
     double non_optimized_utilization;
+    double total;
 
     if ((argc < 2) || (argc > 4)) {
         fprintf(stderr,
@@ -165,61 +299,47 @@ int main(int argc, char *argv[])
 	    }
     }
 
-    // initialize problem
-    if (!(flex_prob = 
-        (flexsched_problem)calloc(1, sizeof(struct flexsched_problem_struct)))) 
-    {
-        fprintf(stderr, 
-            "Insufficient memory to allocate flexsched problem structure!\n");
-        exit(1);
-    }
-
-    /* Parse instance file */
-    fscanf(input,"%d", &flex_prob->num_rigid);
-    fscanf(input,"%d", &flex_prob->num_fluid);
-    fscanf(input,"%d", &flex_prob->num_servers);
-    fscanf(input,"%d", &flex_prob->num_services);
-
-    flex_prob->rigid_capacities = 
-        (float **)calloc(flex_prob->num_servers, sizeof(float *));
-    flex_prob->fluid_capacities = 
-        (float **)calloc(flex_prob->num_servers, sizeof(float *));
-    for (i = 0; i < flex_prob->num_servers; i++) {
-        flex_prob->rigid_capacities[i] = 
-            (float *)calloc(flex_prob->num_rigid, sizeof(float *));
-        flex_prob->fluid_capacities[i] = 
-            (float *)calloc(flex_prob->num_fluid, sizeof(float *));
-    }
-    flex_prob->slas = 
-        (float *)calloc(flex_prob->num_services, sizeof(float));
-    flex_prob->rigid_needs = 
-        (float **)calloc(flex_prob->num_services, sizeof(float*));
-    flex_prob->fluid_needs = 
-        (float **)calloc(flex_prob->num_services, sizeof(float*));
-    for (i = 0; i < flex_prob->num_services; i++) {
-      flex_prob->rigid_needs[i] = 
-          (float *)calloc(flex_prob->num_rigid, sizeof(float));
-      flex_prob->fluid_needs[i] = 
-          (float *)calloc(flex_prob->num_fluid,sizeof(float));
-    }
-
-    for (i = 0; i < flex_prob->num_servers; i++) {
-        for (j=0; j < flex_prob->num_rigid; j++)
-            fscanf(input,"%f", &(flex_prob->rigid_capacities[i][j]));
-        for (j=0; j < flex_prob->num_fluid; j++)
-            fscanf(input,"%f", &(flex_prob->fluid_capacities[i][j]));
-    }
-    for (i = 0; i < flex_prob->num_services; i++) {
-      fscanf(input, "%f", &(flex_prob->slas[i]));
-      for (j=0; j<flex_prob->num_rigid; j++) 
-        fscanf(input, "%f", &(flex_prob->rigid_needs[i][j]));
-      for (j=0; j<flex_prob->num_fluid; j++) 
-        fscanf(input, "%f", &(flex_prob->fluid_needs[i][j]));
-    }
+    flex_prob = new_flexsched_problem(input);
 
     fclose(input);
 
-    flex_prob->lpbound = compute_LP_bound();
+#if 0
+    printf("FlexSched Solver\n");
+    printf("servers: %d services: %d\n", flex_prob->num_servers,
+        flex_prob->num_services);
+    printf("total resources:");
+    for (j = 0; j < flex_prob->num_rigid; j++) {
+        total = 0.0;
+        for(i = 0; i < flex_prob->num_servers; i++) {
+            total += flex_prob->rigid_capacities[i][j];
+        }
+        printf(" %.3f", total);
+    }
+    for (j = 0; j < flex_prob->num_fluid; j++) {
+        total = 0.0;
+        for(i = 0; i < flex_prob->num_servers; i++) {
+            total += flex_prob->fluid_capacities[i][j];
+        }
+        printf(" %.3f", total);
+    }
+    printf("\n");
+    printf("total requirements:");
+    for (j = 0; j < flex_prob->num_rigid; j++) {
+        total = 0.0;
+        for(i = 0; i < flex_prob->num_services; i++) {
+            total += flex_prob->rigid_needs[i][j];
+        }
+        printf(" %.3f", total);
+    }
+    for (j = 0; j < flex_prob->num_fluid; j++) {
+        total = 0.0;
+        for(i = 0; i < flex_prob->num_services; i++) {
+            total += flex_prob->fluid_needs[i][j];
+        }
+        printf(" %.3f", total);
+    }
+    printf("\n");
+#endif
 
     for (sched = schedulers; *sched; sched++) {
 
@@ -230,7 +350,7 @@ int main(int argc, char *argv[])
         gettimeofday(&time1, NULL);
 
         // Call the scheduler
-        flex_soln = (*sched)->func((*sched)->name, (*sched)->options);
+        flex_soln = (*sched)->func(flex_prob, (*sched)->name, (*sched)->options);
 
         gettimeofday(&time2, NULL);
 
@@ -251,7 +371,6 @@ int main(int argc, char *argv[])
                 fprintf(stderr,"Invalid allocation\n");
                 exit(1);
             }
-            
 
         }
 
@@ -262,7 +381,7 @@ int main(int argc, char *argv[])
         // Print output
         fprintf(output, "%s|", (*sched)->string);
         if (!strcmp((*sched)->name,"LPBOUND")) {
-            fprintf(output, "%.3f|", flex_prob->lpbound);
+            fprintf(output, "%.3f|", compute_minimum_yield(flex_soln));
             fprintf(output, "%.3f|", -1.0);
             fprintf(output, "%.3f|", -1.0);
             fprintf(output, "%.3f|", -1.0);
@@ -291,24 +410,12 @@ int main(int argc, char *argv[])
 
     fclose(output);
 
-    for (i = 0; i < flex_prob->num_servers; i++) {
-        free(flex_prob->rigid_capacities[i]);
-        free(flex_prob->fluid_capacities[i]);
-    }
-    free(flex_prob->rigid_capacities);
-    free(flex_prob->fluid_capacities);
-    for (i = 0; i < flex_prob->num_services; i++) {
-        free(flex_prob->rigid_needs[i]);
-        free(flex_prob->fluid_needs[i]);
-    }
-    free(flex_prob->rigid_needs);
-    free(flex_prob->fluid_needs);
-    free(flex_prob->slas);
-    free(flex_prob);
+    free_flexsched_problem(flex_prob);
 
     if (*schedulers) {
         free((*schedulers)->string);
     }
+
     for (sched = schedulers; *sched; sched++) {
         free((*sched)->name);
         free((*sched)->options);
