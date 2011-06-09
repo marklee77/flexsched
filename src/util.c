@@ -227,6 +227,26 @@ void free_global_resource_availabilities_and_loads(
     return;
 }
 
+void put_service_on_server(
+    flexsched_solution_t flex_soln, int service, int server) 
+{
+    int i;
+    
+    flex_soln->mapping[service] = server;
+
+    for (i = 0; i < flex_soln->prob->num_resources; i++) {
+        global_available_resources[server][i] -=
+            flex_soln->prob->services[service]->total_rigid_requirements[i];
+        global_fluid_loads[server][i] +=
+            flex_soln->prob->services[service]->total_fluid_needs[i];
+    }
+
+    return;
+}
+
+
+}
+
 inline float compute_available_resource_fast(
     flexsched_solution_t flex_soln, int server, int dim)
 {
