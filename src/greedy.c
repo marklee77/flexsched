@@ -17,9 +17,9 @@ int cmp_greedy_S2(void *qsort_thunk_vp, const void *xvp, const void *yvp)
     int x = *(int *)xvp, y = *(int *)yvp;
 
     // y is first to make it DECREASING
-    return CMP(float_array_max(flex_prob->total_fluid_needs[y], 
+    return CMP(float_array_max(flex_prob->services[y]->total_fluid_needs, 
         flex_prob->num_resources),
-        float_array_max(flex_prob->total_fluid_needs[x], 
+        float_array_max(flex_prob->services[x]->total_fluid_needs,
             flex_prob->num_resources));
 }
 
@@ -30,9 +30,9 @@ int cmp_greedy_S3(void *qsort_thunk_vp, const void *xvp, const void *yvp)
     int x = *(int *)xvp, y = *(int *)yvp;
 
     // y is first to make it DECREASING
-    return CMP(float_array_sum(flex_prob->total_fluid_needs[y], 
+    return CMP(float_array_sum(flex_prob->services[y]->total_fluid_needs,
         flex_prob->num_resources),
-        float_array_sum(flex_prob->total_fluid_needs[x], 
+        float_array_sum(flex_prob->services[x]->total_fluid_needs,
             flex_prob->num_resources));
 }
 
@@ -44,20 +44,23 @@ int cmp_greedy_S4(void *qsort_thunk_vp, const void *xvp, const void *yvp)
 
     // y is first to make it DECREASING
     return CMP(
-        float_array_max(flex_prob->total_rigid_requirements[y], 
+        float_array_max(flex_prob->services[y]->total_rigid_requirements,
             flex_prob->num_resources),
-        float_array_max(flex_prob->total_rigid_requirements[x], 
+        float_array_max(flex_prob->services[x]->total_rigid_requirements,
             flex_prob->num_resources));
 }
 
 /* Sorting the services by decreasing sum of rigid requirements */
 int cmp_greedy_S5(void *qsort_thunk_vp, const void *xvp, const void *yvp)
 {
+    flexsched_problem_t flex_prob = (flexsched_problem_t)qsort_thunk_vp;
+    int x = *(int *)xvp, y = *(int *)yvp;
+
     // y is first to make it DECREASING
     return CMP(
-        float_array_sum(flex_prob->total_rigid_requirements[y], 
+        float_array_sum(flex_prob->services[y]->total_rigid_requirements,
             flex_prob->num_resources),
-        float_array_sum(flex_prob->total_rigid_requirements[x], 
+        float_array_sum(flex_prob->services[x]->total_rigid_requirements,
             flex_prob->num_resources));
 }
 
@@ -72,9 +75,9 @@ int cmp_greedy_S6(void *qsort_thunk_vp, const void *xvp, const void *yvp)
 
     for (i = 0; i < flex_prob->num_resources; i++) {
         xload[i] = flex_prob->services[x]->total_rigid_requirements[i] +
-            flex_prob->services[x]->total_fluid_needs[i]
+            flex_prob->services[x]->total_fluid_needs[i];
         yload[i] = flex_prob->services[y]->total_rigid_requirements[i] +
-            flex_prob->services[y]->total_fluid_needs[i]
+            flex_prob->services[y]->total_fluid_needs[i];
     }
 
     return CMP(float_array_max(yload, flex_prob->num_resources), 
@@ -97,7 +100,7 @@ int cmp_greedy_S7(void *qsort_thunk_vp, const void *xvp, const void *yvp)
             flex_prob->num_resources));
 }
 
-void GREEDY_sort_services(int *sortmap, flex_problem_t flex_prob, 
+void GREEDY_sort_services(int *sortmap, flexsched_problem_t flex_prob, 
     int (*cmp_items)(void *, const void *, const void *))
 {
     int i;
@@ -123,9 +126,9 @@ int GREEDY_pick_server_P1(flexsched_solution_t flex_soln, int service)
     int picked = -1;
     for (i = 0; i < flex_soln->prob->num_servers; i++) {
         if (!service_can_fit_on_server_fast(flex_soln, service, i)) continue;
-        available_resouce = compute_available_resource_fast(flex_soln, i, dim);
-        if(available_resouce > max_available_resource) {
-            max_available_resouce = available_resource;
+        available_resource = compute_available_resource_fast(flex_soln, i, dim);
+        if(available_resource > max_available_resource) {
+            max_available_resource = available_resource;
             picked = i;
         }
     }
@@ -139,7 +142,7 @@ int GREEDY_pick_server_P2(flexsched_solution_t flex_soln, int service)
     int i, j;
     float sumload, sumresource;
     float ratio, minratio = -1.0;
-    int picked -1 ;
+    int picked;
   
     picked = -1;
 
@@ -256,7 +259,7 @@ int GREEDY_pick_server_P7(flexsched_solution_t flex_soln, int service)
     int i, picked;
 
     picked = -1;
-    for (i = 0; i < flex_prob->num_servers; i++) {
+    for (i = 0; i < flex_soln->prob->num_servers; i++) {
         if (!service_can_fit_on_server_fast(flex_soln, service, i)) continue;
         picked = i;
         break;
@@ -266,7 +269,7 @@ int GREEDY_pick_server_P7(flexsched_solution_t flex_soln, int service)
 }
 
 void GREEDY_compute_mapping(flexsched_solution_t flex_soln, 
-    int (*pick_server)(flex_soln, int), int *sortmap)
+    int (*pick_server)(flexsched_solution_t, int), int *sortmap)
 {
     int i, j; 
     int service, server;
@@ -287,12 +290,12 @@ void GREEDY_compute_mapping(flexsched_solution_t flex_soln,
     return;
 }
 
-flexsched_solution GREEDY_solver(flexsched_problem_t flex_prob,
+flexsched_solution_t GREEDY_solver(flexsched_problem_t flex_prob,
     int (*cmp_items)(void *, const void *, const void *), 
-    int (*pick_server)(int))
+    int (*pick_server)(flexsched_solution_t, int))
 {
     int sortmap[flex_prob->num_services];
-    flexsched_solution flex_soln = new_flexsched_solution(flex_prob);
+    flexsched_solution_t flex_soln = new_flexsched_solution(flex_prob);
 
     if (NULL == cmp_items || NULL == pick_server) {
         fprintf(stderr, "Invalid GREEDY sorting or picking function.\n");
@@ -300,7 +303,7 @@ flexsched_solution GREEDY_solver(flexsched_problem_t flex_prob,
     }
 
     // needed for _fast
-    initialize_global_resource_availablilities_and_loads(flex_prob);
+    initialize_global_resource_availabilities_and_loads(flex_prob);
 
     // Sort the services appropriately
     GREEDY_sort_services(sortmap, flex_prob, cmp_items);
@@ -310,20 +313,20 @@ flexsched_solution GREEDY_solver(flexsched_problem_t flex_prob,
 
     // greedy has to do this since it doesn't have a concept of allocation
     if (flex_soln->success) {
-        maximize_minimum_yield(flex_soln);
+        maximize_minimum_then_average_yield(flex_soln);
     }
 
     // cleanup
-    free_global_server_loads();
+    free_global_resource_availabilities_and_loads(flex_prob);
 
     return flex_soln;
 }
 
-flexsched_solution GREEDY_scheduler(
+flexsched_solution_t GREEDY_scheduler(
     flexsched_problem_t flex_prob, char *name, char **options) 
 {
-    int (*cmp_items)(const void *, const void *) = NULL;
-    int (*pick_server)(int) = NULL;
+    int (*cmp_items)(void *, const void *, const void *) = NULL;
+    int (*pick_server)(flexsched_solution_t, int) = NULL;
     char **opt;
 
     for (opt = options; *opt; opt++) {
@@ -361,20 +364,21 @@ flexsched_solution GREEDY_scheduler(
     return GREEDY_solver(flex_prob, cmp_items, pick_server);
 }
 
-flexsched_solution METAGREEDY_scheduler(
+flexsched_solution_t METAGREEDY_scheduler(
     flexsched_problem_t flex_prob, char *name, char **options)
 {
-    flexsched_solution flex_soln = new_flexsched_solution(flex_prob);
+    flexsched_solution_t flex_soln = new_flexsched_solution(flex_prob);
 
-    int (*sorting[])(const void *, const void *) = {cmp_greedy_S1, 
+    int (*sorting[])(void *, const void *, const void *) = {cmp_greedy_S1, 
         cmp_greedy_S2, cmp_greedy_S3, cmp_greedy_S4, 
         cmp_greedy_S5, cmp_greedy_S6, cmp_greedy_S7, NULL};
-    int (*picking[])(int) = {GREEDY_pick_server_P1, GREEDY_pick_server_P2, 
-        GREEDY_pick_server_P3, GREEDY_pick_server_P4, GREEDY_pick_server_P5,
-        GREEDY_pick_server_P6, GREEDY_pick_server_P7, NULL};
+    int (*picking[])(flexsched_solution_t, int) = {GREEDY_pick_server_P1, 
+        GREEDY_pick_server_P2, GREEDY_pick_server_P3, GREEDY_pick_server_P4, 
+        GREEDY_pick_server_P5, GREEDY_pick_server_P6, GREEDY_pick_server_P7, 
+        NULL};
     int i, is, ip;
 
-    flexsched_solution curr_soln = NULL;
+    flexsched_solution_t curr_soln = NULL;
     float minyield, maxminyield = -1;
     float avgyield, maxavgyield = -1;
 
@@ -401,8 +405,7 @@ flexsched_solution METAGREEDY_scheduler(
                     // save the returned answer
                     for (i=0; i < flex_prob->num_services; i++) {
                         flex_soln->mapping[i] = curr_soln->mapping[i];
-                        flex_soln->scaled_yields[i] = 
-                            curr_soln->scaled_yields[i];
+                        flex_soln->yields[i] = curr_soln->yields[i];
                     }
                     sprintf(flex_soln->misc_output, "S%d P%d", is+1, ip+1);
                 }
@@ -415,22 +418,22 @@ flexsched_solution METAGREEDY_scheduler(
     return flex_soln;
 }
 
-flexsched_solution METAGREEDYLIGHT_scheduler(
+flexsched_solution_t METAGREEDYLIGHT_scheduler(
     flexsched_problem_t flex_prob, char *name, char **options)
 {
-    flexsched_solution flex_soln = new_flexsched_solution(flex_prob);
+    flexsched_solution_t flex_soln = new_flexsched_solution(flex_prob);
 
-    int (*sorting[])(const void *, const void *) = {cmp_greedy_S3, 
+    int (*sorting[])(void *, const void *, const void *) = {cmp_greedy_S3, 
         cmp_greedy_S2, cmp_greedy_S5, cmp_greedy_S7, 
         cmp_greedy_S6, cmp_greedy_S2, cmp_greedy_S3,
         cmp_greedy_S6, cmp_greedy_S5, NULL};
-    int (*picking[])(int) = {GREEDY_pick_server_P1, GREEDY_pick_server_P1, 
-        GREEDY_pick_server_P1, GREEDY_pick_server_P1, GREEDY_pick_server_P1,
-        GREEDY_pick_server_P2, GREEDY_pick_server_P2, GREEDY_pick_server_P2,
-        GREEDY_pick_server_P4, NULL};
+    int (*picking[])(flexsched_solution_t, int) = {GREEDY_pick_server_P1, 
+        GREEDY_pick_server_P1, GREEDY_pick_server_P1, GREEDY_pick_server_P1, 
+        GREEDY_pick_server_P1, GREEDY_pick_server_P2, GREEDY_pick_server_P2, 
+        GREEDY_pick_server_P2, GREEDY_pick_server_P4, NULL};
     int i, isp;
 
-    flexsched_solution curr_soln = NULL;
+    flexsched_solution_t curr_soln = NULL;
     float minyield, maxminyield = -1;
     float avgyield, maxavgyield = -1;
 
@@ -456,7 +459,7 @@ flexsched_solution METAGREEDYLIGHT_scheduler(
                 // save the returned answer
                 for (i=0; i < flex_prob->num_services; i++) {
                     flex_soln->mapping[i] = curr_soln->mapping[i];
-                    flex_soln->scaled_yields[i] = curr_soln->scaled_yields[i];
+                    flex_soln->yields[i] = curr_soln->yields[i];
                 }
             }
         }

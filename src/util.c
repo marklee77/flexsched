@@ -244,9 +244,6 @@ void put_service_on_server(
     return;
 }
 
-
-}
-
 inline float compute_available_resource_fast(
     flexsched_solution_t flex_soln, int server, int dim)
 {

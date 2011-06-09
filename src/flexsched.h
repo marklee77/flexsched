@@ -11,8 +11,11 @@
 /**** PARAMETER CONSTANTS ***/
 /****************************/
 #define EPSILON 0.00001
-
 #define RANDOM_SEED 6337
+
+#define BEST_FIT 1
+#define FIRST_FIT 0
+#define WORST_FIT -1
 
 /****************************/
 /****** VARIOUS MARCOS ******/
@@ -67,14 +70,19 @@ typedef struct flexsched_solution_s {
 /*********************************/
 
 /* utility function prototypes */
+flexsched_solution_t new_flexsched_solution(flexsched_problem_t);
+void free_flexsched_solution(flexsched_solution_t);
+void put_service_on_server(flexsched_solution_t, int, int);
+
+void initialize_global_resource_availabilities_and_loads(flexsched_problem_t);
+void free_global_resource_availabilities_and_loads(flexsched_problem_t);
+
 float compute_minimum_yield(flexsched_solution_t);
 float compute_average_yield(flexsched_solution_t);
 float compute_utilization(flexsched_solution_t);
+int sanity_check(flexsched_solution_t);
 
 /*
-void initialize_global_server_loads();
-void free_global_server_loads();
-void add_service_load_to_server(int, int);
 double compute_LP_bound();
 float array_sum(float *, int);
 float array_max(float *, int);
@@ -93,9 +101,6 @@ void maximize_average_yield_on_server_given_minimum(
     flexsched_solution, int, float);
 void maximize_minimum_then_average_yield(flexsched_solution);
 float compute_server_sum_alloc(flexsched_solution, int);
-int sanity_check(flexsched_solution);
-flexsched_solution new_flexsched_solution();
-void free_flexsched_solution(flexsched_solution);
 */
 
 /* Scheduler function prototypes */

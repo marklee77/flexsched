@@ -1,0 +1,84 @@
+Bordeaux
+    Bordeplage: 51 nodes, each has 2 3 GHz cores, 2 GB ram, 70 GB disk
+    Bordereau: 93 nodes, each has 4 2.6 GHz cores, 4 GB ram, 80 GB disk
+    Borderline: 10 nodes, each has 8 2.6 GHz cores, 32 GB ram, 600 GB disk
+Grenoble
+    Adonis: 12 nodes, each has 8 2.27 GHz cores, 24 GB ram, 250 GB disk
+    Edel: 72 nodes, each has 8 2.27 GHz cores, 24 GB ram, 60 GB disk
+    Genepi: 34 nodes, each has 8 2.5 GHz cores, 8 GB ram, 160 GB disk
+    Idpot: 32 nodes, each has 2 2.4 GHz cores, 1.5 GB ram, 80 GB disk
+Lille
+    Chimint: 20 nodes, each has 8 2.4 GHz cores, 16 GB ram, 2 150 GB disks
+    Chirloute: 8 nodes, each has 8 2.4 GHz cores, 8 GB ram, 300 GB disk
+    Chicon: 26 nodes, each has 4 2.6 GHz cores, 4 GB ram, 80 GB disk
+    Chinqchint: 46 nodes, each has 8 2.83 GHz cores, 8 GB ram, 250 GB disk
+    Chuque: 53 nodes, each has 2 2.2 GHz cores, 4 GB ram, 80 GB disk
+    Chti: 20 nodes, each has 2 2.6 GHz cores, 4 GB ram, 80 GB disk
+Lyon
+    Capricorne: 56 nodes, each has 2 2.0 GHz cores, 2 GB ram, 36 GB disk
+    Sagittaire: 79 nodes, each has 2 2.4 GHz cores, 2GB ram, 73 GB disk
+Nancy
+    Graphene: 144 nodes, each has 4 2.53 GHz cores, 16 GB ram, 320 GB disk
+    Griffon: 92 nodes, each has 8 2.5 GHz cores, 16 GB ram, 320 GB disk
+    Grelon: 120 nodes, each has 4 1.6 GHz cores, 2 GB ram, 80 GB disk
+Orsay
+    NetGDX: 30 nodes, each has 2 2.0 GHz cores, 2 GB ram, 80 GB disk
+    GDX: 186 nodes, each has 2 2.0 GHz cores, 2 GB ram, 80 GB disk
+    GDX-ext: 126 nodes, each node has 2 2.4 GHz cores, 2 GB ram, 80 GB disk
+Rennes
+    Paraplui: 40 nodes, each has 24 1.7 GHz cores, 48 GB ram, 250 GB disk
+    Parapide: 25 nodes, each has 8 2.93 GHz cores, 24 GB ram, 500 GB disk
+    Paradent: 64 nodes, each has 8 2.5 GHz cores, 32 GB ram, 320 GB disk
+    Paramount: 32 nodes, each has 4 2.33 GHz cores, 8 GB ram, 2 300 GB disks
+    Paraquad: 64 nodes, each has 4 2.33 GHz cores, 4 GB ram, 160 GB disk
+    Paravent: 99 nodes, each has 2 2.0 GHz cores, 2 GB ram, 80 GB disk
+    Parasol: 64 nodes, each has 2 2.2 GHz cores, 2 GB ram, 73 GB disk
+    tartopom: 32 nodes, each has 2 2.0 GHz cores, 1 GB ram, 80 GB disk
+    Paraci: 64 nodes, each has 2 2.4 GHz cores, 2 GB ram, 37 GB disk
+Sophia
+    Azur: 49 nodes, each has 2 2.0 GHz cores, 2 GB ram, 80 GB disk
+    Helios: 56 nodes, each has 4 2.2 GHz cores, 4 GB ram, 2 73 GB disks
+    Sol: 50 nodes, each has 4 2.6 GHz cores, 4 GB ram, 250 GB disk
+    Suno: 45 nodes, each has 8 2.26 GHz cores, 32 GB ram, 2 300 GB disks
+Toulouse
+    Violette: 57 nodes, each has 2 2.2 GHz cores, 2 GB ram, 73 GB disk
+    Pastel: 80 odes, each has 4 2.6 GHz cores, 8 GB ram, 250 GB disk
+    
+In summary:
+
+count   cores   GHz     ram
+ 51      2      3.00     2.0
+ 93      4      2.60     4.0
+ 10      8      2.60    32.0
+ 84      8      2.27    24.0
+ 34      8      2.50     8.0
+ 32      2      2.40     1.5
+ 20      8      2.40    16.0
+  8      8      2.40     8.0
+ 26      4      2.60     4.0
+ 46      8      2.83     8.0
+ 53      2      2.20     4.0
+ 20      2      2.60     4.0
+ 56      2      2.00     2.0
+ 79      2      2.40     2.0
+144      4      2.53    16.0
+ 92      8      2.50    16.0
+120      4      1.60     2.0
+ 30      2      2.00     2.0
+186      2      2.00     2.0
+126      2      2.40     2.0
+ 40     24      1.70    48.0
+ 25      8      2.93    24.0
+ 64      8      2.50    32.0
+ 32      4      2.33     8.0
+ 64      4      2.33     4.0
+ 99      2      2.00     2.0
+ 64      2      2.20     2.0
+ 32      2      2.00     1.0
+ 64      2      2.40     2.0
+ 49      2      2.00     2.0
+ 56      4      2.20     4.0
+ 50      4      2.60     4.0
+ 45      8      2.26    32.0
+ 57      2      2.20     2.0
+ 80      4      2.26     8.0
