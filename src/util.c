@@ -1,4 +1,7 @@
 #include "flexsched.h"
+#ifdef NO_QSORT_R
+void *qsort_thunk_vp = NULL;
+#endif
 
 float float_array_sum(float *array, int size)
 {

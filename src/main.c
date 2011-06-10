@@ -7,10 +7,10 @@ struct implemented_scheduler_s {
 };
 
 struct implemented_scheduler_s implemented_schedulers[] = {
-/*
     {"GREEDY",          GREEDY_scheduler,          1},
     {"METAGREEDY",      METAGREEDY_scheduler,      1},
     {"METAGREEDYLIGHT", METAGREEDYLIGHT_scheduler, 1},
+/*
     {"MILP",            MILP_scheduler,            1},
     {"LPBOUND",         LPBOUND_scheduler,         0},
     {"RRND",            LPROUNDING_scheduler,      1},

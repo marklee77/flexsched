@@ -5,13 +5,13 @@
 // of greedy algs the same way we have 2 sets of vector packing algorithms?
 
 /* Keeping the services in their original order */
-int cmp_greedy_S1(void *qsort_thunk_vp, const void *xvp, const void *yvp)
+QSORT_CMP_FUNC_DECL(cmp_greedy_S1)
 {
     return 0;
 }
 
 /* Sorting the services by decreasing of max fluid needs */
-int cmp_greedy_S2(void *qsort_thunk_vp, const void *xvp, const void *yvp)
+QSORT_CMP_FUNC_DECL(cmp_greedy_S2)
 {
     flexsched_problem_t flex_prob = (flexsched_problem_t)qsort_thunk_vp;
     int x = *(int *)xvp, y = *(int *)yvp;

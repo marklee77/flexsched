@@ -104,10 +104,11 @@ float compute_server_sum_alloc(flexsched_solution, int);
 */
 
 /* Scheduler function prototypes */
+flexsched_solution_t GREEDY_scheduler(flexsched_problem_t, char *, char **);
+flexsched_solution_t METAGREEDY_scheduler(flexsched_problem_t, char *, char **);
+flexsched_solution_t METAGREEDYLIGHT_scheduler(flexsched_problem_t, char *, 
+    char **);
 /*
-flexsched_solution GREEDY_scheduler(flexsched_problem, char *, char **);
-flexsched_solution METAGREEDY_scheduler(flexsched_problem, char *, char **);
-flexsched_solution METAGREEDYLIGHT_scheduler(char *, char **);
 flexsched_solution LPBOUND_scheduler(char*, char **);
 flexsched_solution MILP_scheduler(char *, char **);
 flexsched_solution LPROUNDING_scheduler(char *, char **);
@@ -115,5 +116,25 @@ flexsched_solution VP_scheduler(char *, char **);
 flexsched_solution HVP_scheduler(char *, char **);
 flexsched_solution METAHVP_scheduler(char *, char **);
 */
+
+// QSORT_R
+#ifdef NO_QSORT_R
+#define QSORT_CMP_FUNC_DECL(name) 
+    int name(const void *xvp, const void *yvp)
+typedef (int)(const void *, const void *) qsort_cmp_func;
+extern void *qsort_thunk_vp;
+#define qsort_r(base, nel, width, thunk, compar) \
+    (qsort_thunk_vp = thunk; qsort(base, nel, width, compar))
+#define QSORT_CMP_CALL(cmp_items, thunk, x, y) \
+    (qsort_thunk_vp = thunk; cmp_items(x, y))
+
+#else
+#define QSORT_CMP_FUNC_DECL(name) \
+    int name(void *qsort_thunk_vp, const void *xvp, const void *yvp)
+typedef int(qsort_cmp_func)(void *, const void *, const void *); 
+#define QSORT_CMP_CALL(cmp_items, thunk, x, y) \
+    cmp_items(thunk, x, y)
+
+#endif
 
 #endif

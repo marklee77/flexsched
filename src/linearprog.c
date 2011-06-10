@@ -1,9 +1,7 @@
 #include "flexsched.h"
 
 /***********************************************************/
-/* Schedulers based on the linear program described in the */
-/* JPDC paper. Chekuri uses a different linear program and */
-/* is contained in its own file                            */
+/* Schedulers based on the new linear program              */
 /***********************************************************/
 
 #define RATIONAL 1
@@ -15,18 +13,19 @@
 //  e_ij = H*(i-1)+j: 1 .. NH
 //  y_ih = N*H+(i-1)+j: NH+1 .. 2NH
 //  Y: 2NH+1
-#define LP_NUM_COLS (2*(flex_prob->num_services)*(flex_prob->num_servers)+1)
+#define PLACEMENT_LP_NUM_COLS \
+    (2*(flex_prob->num_services)*(flex_prob->num_servers)+1)
 
 // Number of rows  
 //  (A) for all i      sum_h e_ih = 1:                N rows
 //  (B) for all i,h    y_ih <= e_ih                   NH rows
-//  (C) for all i      sum_h y_ih >= sla_i            N rows
-//  (D) for all h, jr  sum_i r_ij*e_ih <= 1           HR rows
-//  (E) for all h, jf  sum_i r_ij*y_ih <= 1           HF rows
+//  (D) for all h, jr  sum_i r_ij*e_ih +              HR rows
+//  (E) for all h, jf  sum_i r_ij*y_ih <= 1           
 //  (F) for all i      (sum_h y_ih - sla_i)/(1-sla_i) >= Y    N rows
-#define LP_NUM_ROWS (((flex_prob->num_services)+(flex_prob->num_rigid)+\
-    (flex_prob->num_fluid))*(flex_prob->num_servers)+\
-    3*(flex_prob->num_services))
+#define PLACEMENT_LP_NUM_ROWS (\
+    2*flex_prob->num_services+\
+    flex_prob->num_services*flex_prob->num_servers+\
+    flex_prob->num_servers*flex_prob->num_resources)
 
 // non-zero matrix elements
 // Constraint A: N rows of H elements -- N*H
@@ -35,65 +34,48 @@
 // Constraint D: H*R rows of N elements -- H*R*N
 // Constraint E: H*F rows of N elements -- H*F*N
 // Constraint F: N rows of H+1 elements -- N*(H+1);
-#define LP_NUM_ELTS ((flex_prob->num_services)*(flex_prob->num_servers)*\
+#define PLACEMENT_LP_NUM_ELTS \
+    ((flex_prob->num_services)*(flex_prob->num_servers)*\
     (5+(flex_prob->num_rigid)+(flex_prob->num_fluid))+(flex_prob->num_services))
 
 #ifdef CPLEX
 
-// CPLEX does zero indexed rows/cols, unlike GLPK
-#define LP_E_IJ_COL ((flex_prob->num_servers)*i+j)
-#define LP_Y_IJ_COL ((flex_prob->num_servers)*((flex_prob->num_services)+i)+j)
-#define LP_OBJ_COL  (2*(flex_prob->num_services)*(flex_prob->num_servers))
-
 #include <ilcplex/cplex.h>
 
-int create_placement_lp(int rational, CPXENVptr *retenv, CPXLPptr *retlp) 
+#define LP_FUNC_DECL(funcname, ...) \
+    int funcname(CPXENVptr *env, CPXLPptr *lp, __VA_ARGS__)
+
+#define LP_INIT \
+    (env = CPXopenCPLEX (&status), \
+     lp = CPXcreateprob(env, &status, ""))
+
+// CPLEX does zero indexed rows/cols, unlike GLPK
+#define PLACEMENT_LP_E_IJ_COL \
+    ((flex_prob->num_servers)*i+j)
+#define PLACEMENT_LP_Y_IJ_COL \
+    ((flex_prob->num_servers)*((flex_prob->num_services)+i)+j)
+#define PLACEMENT_LP_OBJ_COL  \
+    (2*(flex_prob->num_services)*(flex_prob->num_servers))
+#define PLACEMENT_LP_MATRIX_DECL \
+    int ia[PLACEMENT_LP_NUM_ELTS];\
+    int ja[PLACEMENT_LP_NUM_ELTS];\
+    double ra[PLACEMENT_LP_NUM_ELTS];
+
+#else
+
+#endif
+
+LP_FUNC_DECL(create_placement_lp, int rational) 
 {
-    CPXENVptr env = NULL;
-    CPXLPptr lp = NULL;
     int status = 0;
     int i, j, k;
     double obj, bound, range;
     int row, elt;
-    int ia[LP_NUM_ELTS];    // array of matrix element row indicies
-    int ja[LP_NUM_ELTS];    // array of matrix element column indicies
-    double ra[LP_NUM_ELTS]; // array of matrix element coefficients
     char type;
 
-    *retenv = NULL;
-    *retlp = NULL; 
+    PLACEMENT_LP_MATRIX_DECL;
 
-    // create CPLEX problem
-    env = CPXopenCPLEX (&status);
-    if (NULL == env) {
-        fprintf (stderr, "Could not open CPLEX environment.\n");
-        return 1;
-    }
-  
-#ifdef DEBUG
-    // turn on output
-    status = CPXsetintparam(env, CPX_PARAM_SCRIND, CPX_ON);
-    if ( status ) {
-        fprintf (stderr,
-                 "Failure to turn on screen indicator, error %d.\n", status);
-        return 1;
-    }
-    // Turn on data checking
-    status = CPXsetintparam(env, CPX_PARAM_DATACHECK, CPX_ON);
-    if ( status ) {
-        fprintf (stderr, 
-            "Failure to turn on data checking, error %d.\n", status);
-        return 1; 
-    }
-#endif
-
-    // create the problem
-    lp = CPXcreateprob(env, &status, "task placement problem");
-
-    if ( lp == NULL ) {
-        fprintf (stderr, "Failed to create LP.\n");
-        return 1;
-    }  
+    LP_INIT;
 
     // default objective coefficient and upper/lower bounds for most variables
     obj = 0.0;
