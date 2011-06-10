@@ -1,5 +1,154 @@
 #include "flexsched.h"
 
+#ifdef CPLEX
+
+#include <ilcplex/cplex.h>
+
+// CPLEX does zero indexed rows/cols, unlike GLPK
+#define PLACEMENT_LP_E_IJ_COL \
+    ((flex_prob->num_servers)*i+j)
+#define PLACEMENT_LP_Y_IJ_COL \
+    ((flex_prob->num_servers)*((flex_prob->num_services)+i)+j)
+#define PLACEMENT_LP_OBJ_COL  \
+    (2*(flex_prob->num_services)*(flex_prob->num_servers))
+
+typedef struct linear_program_s {
+    CPXENVptr *env;
+    CPXLPptr *lp;
+} *linear_program_t;
+
+// for now lps always maximize...
+linear_program_t new_linear_program(void)
+{
+    int status = 0;
+    linear_program_t lp = malloc(sizeof(linear_program_s));
+    lp->env = CPXopenCPLEX(&status);
+    lp->lp = CPXcreateprob(lp->env, &status, "")
+    CPXchgobjsen(lp->env, lp->lp, CPX_MAX);
+}
+
+void set_column_params(linear_program_t lp, int col, 
+    int rational, double lb, double ub, double obj)
+{
+    char type = rational ? (CPX_CONTINUOUS) : (CPX_BINARY);
+    ub -= lb; // ub is actually range, which is the amount allowed over the lb
+    CPXnewcols(lp->env, lp->lp, 1, &obj, &lb, &ub, &type, NULL);
+    return;
+}
+
+void set_row_params(
+    linear_program_t lp, int row, double bound, int xxx)
+{
+    type = 'E'; bound = 1.0;
+    CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
+}
+
+void load_matrix(linear_program_t lp, int elts, int ia[], int ja[], float ra[])
+{
+    CPXchgcoeflist(lp->env, lp->lp, elts, ia, ja, ra);
+}
+
+void free_linear_program(linear_program_t lp)
+{
+}
+
+int solve_linear_program(linear_program_t lp, int rational) {
+{
+    int status;
+
+    if (rational) {
+        status = CPXlpopt(lp->env, lp->lp);
+    } else {
+        status = CPXmipopt(lp->env, lp->lp);
+    }
+
+    return status;
+}
+
+#else
+
+#define GLPK_TIME_LIMIT 10*60*1000
+
+// GLPK does not use zero indexing, which seems like a waste.
+#define LP_E_IJ_COL ((flex_prob->num_servers)*i+j+1)
+#define LP_Y_IJ_COL ((flex_prob->num_servers)*((flex_prob->num_services)+i)+j+1)
+#define LP_OBJ_COL  (2*(flex_prob->num_services)*(flex_prob->num_servers)+1)
+
+#include <glpk.h>
+
+typedef glp_prob *linear_program_t;
+
+// for now lps always maximize...
+// fixme... parames for rows/cols?
+linear_program_t new_linear_program(void)
+{
+    linear_program_t lp = glp_create_prob();
+    glp_add_cols(lp, PLACEMENT_LP_NUM_COLS);
+    glp_add_rows(lp, PLACEMENT_LP_NUM_ROWS);
+    glp_set_obj_dir(lp, GLP_MAX);
+    return lp;
+}
+
+void set_column_params(linear_program_t lp, int col, 
+    int rational, double lb, double ub, double obj)
+{
+    glp_set_col_kind(lp, col, rational ? (GLP_CV) : (GLP_BV));
+    glp_set_col_bnds(lp, col, GLP_DB, lb, ub);
+    glp_set_obj_coef(lp, col, obj);
+}
+
+void set_row_params(
+    linear_program_t lp, int row, double bound, int xxx)
+{
+}
+
+void load_matrix(linear_program_t lp, int elts, int ia[], int ja[], float ra[])
+{
+}
+
+void free_linear_program(linear_program_t lp)
+{
+}
+
+int glp_stderr_null_out(void *info, const char *s) 
+{
+    return 1;
+}
+
+int solve_linear_program(linear_program_t lp, int rational)
+{
+    int solver_status, solution_status;
+
+    // kill lp output
+    glp_term_hook(&glp_stderr_null_out, NULL);
+
+    if (rational) {
+        solver_status = glp_simplex(prob, NULL);
+        solution_status = (glp_get_status(prob) != GLP_OPT);
+    } else {
+        glp_iocp parm;
+        glp_init_iocp(&parm);
+        parm.presolve = GLP_ON;
+        parm.tm_lim = GLPK_TIME_LIMIT;
+        solver_status = glp_intopt(prob, &parm);
+        solution_status = (glp_mip_status(prob) != GLP_OPT);
+    }
+
+    // Reached the time limit
+    if (solver_status == GLP_ETMLIM) {
+        return 2;
+    }
+
+    // Failed for some other reason
+    if ((solver_status) || (solution_status)) {
+        return 1;
+    }
+
+    return 0;
+}
+
+#endif
+
 /***********************************************************/
 /* Schedulers based on the new linear program              */
 /***********************************************************/
@@ -36,79 +185,44 @@
 #define PLACEMENT_LP_NUM_ELTS (flex_prob->num_services*flex_prob->num_servers*(\
     3+2*flex_prob->num_resources))
 
-#ifdef CPLEX
+linear_program_t create_placement_lp(
+    flexsched_problem_t flex_prob, int rational)
+{
+    int i, j, k;
 
-#include <ilcplex/cplex.h>
+    /********** START CPLEX ***************/
+    int row = 0, elt = 0;
 
-#define LP_FUNC_DECL(funcname, ...) \
-    int funcname(CPXENVptr *env, CPXLPptr *lp, __VA_ARGS__)
-
-#define LP_INIT \
-    (env = CPXopenCPLEX (&status), \
-     lp = CPXcreateprob(env, &status, ""))
-
-// CPLEX does zero indexed rows/cols, unlike GLPK
-#define PLACEMENT_LP_E_IJ_COL \
-    ((flex_prob->num_servers)*i+j)
-#define PLACEMENT_LP_Y_IJ_COL \
-    ((flex_prob->num_servers)*((flex_prob->num_services)+i)+j)
-#define PLACEMENT_LP_OBJ_COL  \
-    (2*(flex_prob->num_services)*(flex_prob->num_servers))
-
-#define PLACEMENT_LP_MATRIX_DECL \
     int ia[PLACEMENT_LP_NUM_ELTS];\
     int ja[PLACEMENT_LP_NUM_ELTS];\
     double ra[PLACEMENT_LP_NUM_ELTS];
 
-#else
-
-#endif
-
-LP_FUNC_DECL(create_placement_lp, int rational) 
-{
-    int i, j, k;
-
-    int status = 0;
-    double obj, bound, range;
-    char type;
-    int row = 0, elt = 0;
-
-    PLACEMENT_LP_MATRIX_DECL;
-
-    LP_INIT;
-
-    // default objective coefficient and upper/lower bounds for most variables
-    obj = 0.0;
-    bound = 0.0;
-    range = 1.0;
+    /********** END CPLEX ***************/
 
     // Add e_ij columns
-    type = rational ? (CPX_CONTINUOUS) : (CPX_BINARY);
     for (i = 0; i < flex_prob->num_services; i++) {
         for (j = 0; j < flex_prob->num_servers; j++) {
+            type = rational ? (CPX_CONTINUOUS) : (CPX_BINARY);
             CPXnewcols(env, lp, 1, &obj, &bound, &range, &type, NULL);
         }
     }
 
     // Add y_ij columns
-    type = CPX_CONTINUOUS;
     for (i = 0; i < flex_prob->num_services; i++) {
         for (j = 0; j < flex_prob->num_servers; j++) {
+            type = CPX_CONTINUOUS;
             CPXnewcols(env, lp, 1, &obj, &bound, &range, &type, NULL);
         }
     }
 
     // objective column
     obj = 1.0;
+    type = rational ? (CPX_CONTINUOUS) : (CPX_BINARY);
     CPXnewcols(env, lp, 1, &obj, &bound, &range, &type, NULL);
 
-    elt = 0; // element counter
-    row = 0; // row counter
-
     // (A) for all J: sum_N e_{j,n} = 1                
-    type = 'E';
-    bound = 1.0;
     for (i = 0; i < flex_prob->num_services; i++) {
+        type = 'E'; bound = 1.0;
         CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
         for (j = 0; j < flex_prob->num_servers; j++) {
             ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_E_IJ; 
@@ -118,9 +232,8 @@ LP_FUNC_DECL(create_placement_lp, int rational)
     }
 
     // (B) for all J: sum_N y_{j,n} >= Y
-    type = 'L';
-    bound = 0.0;
     for (i = 0; i < flex_prob->num_services; i++) {
+        type = 'L'; bound = 0.0;
         CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
         for (j = 0; j < flex_prob->num_servers; j++) {
             ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_Y_IJ; 
@@ -132,10 +245,9 @@ LP_FUNC_DECL(create_placement_lp, int rational)
     }
 
     // (C) for all J,N: y_{j,n} <= e_{j,n}
-    type = 'L';
-    bound = 0.0;
     for (i = 0; i < flex_prob->num_services; i++) {
         for (j = 0; j < flex_prob->num_servers; j++) {
+            type = 'L'; bound = 0.0;
             CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
             ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_Y_IJ; 
             ra[elt] = 1.0; elt++;
@@ -146,10 +258,10 @@ LP_FUNC_DECL(create_placement_lp, int rational)
     }
    
     // (D) for all J,N,R: e_{j,n}*a_{j,r}+y_{j,n}*b_{j,r} <= u_{n,r}
-    type = 'L';
     for (i = 0; i < flex_prob->num_services; i++) {
         for (j = 0; j < flex_prob->num_servers; j++) {
             for (k = 0; k < flex_prob->num_resources; k++) {
+                type = 'L';
                 bound = flex_prob->servers[j]->unit_capacities[k];
                 CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
                 ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_E_IJ; 
@@ -163,9 +275,9 @@ LP_FUNC_DECL(create_placement_lp, int rational)
     }
 
     // (E) for all N,R: sum_J e_{j,n}*c_{j,r} + y_{j,n}*b_{j,r} <= t_{n,r}
-    type = 'L';
     for (j = 0; j < flex_prob->num_servers; j++) {
         for (k = 0; k < flex_prob->num_resources; k++) {
+            type = 'L';
             bound = flex_prob->servers[j]->total_capacities[k];
             CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
             for (i = 0; i < flex_prob->num_services; i++) {
@@ -179,205 +291,53 @@ LP_FUNC_DECL(create_placement_lp, int rational)
         }
     }
 
+    // now load matrix...
     CPXchgcoeflist (env, lp, PLACEMENT_LP_NUM_ELTS, ia, ja, ra);
-    CPXchgobjsen(env, lp, CPX_MAX);
 
-    return 0;
-
+    return blah;
 }
 
-int solve_linear_program(CPXENVptr env, CPXLPptr lp, int rational)
-{
-    int status;
-
-    if (rational) {
-        status = CPXlpopt(env, lp);
-    } else {
-        status = CPXmipopt(env, lp);
-    }
-
-  return status;
-}
-
-#else
-
-#define GLPK_TIME_LIMIT 10*60*1000
-
-// GLPK does not use zero indexing, which seems like a waste.
-#define LP_E_IJ_COL ((flex_prob->num_servers)*i+j+1)
-#define LP_Y_IJ_COL ((flex_prob->num_servers)*((flex_prob->num_services)+i)+j+1)
-#define LP_OBJ_COL  (2*(flex_prob->num_services)*(flex_prob->num_servers)+1)
-
-#include <glpk.h>
-
-glp_prob *create_placement_lp(int rational) 
+linear_program_t create_placement_lp(
+    flexsched_problem_t flex_prob, int rational) 
 {
     int i, j, k;
 
-    glp_prob *prob;
+    /********** START GLPK ***************/
     int row = 1, elt = 1;
     int ia[PLACEMENT_LP_NUM_ELTS+1];    
     int ja[PLACEMENT_LP_NUM_ELTS+1];   
     double ra[PLACEMENT_LP_NUM_ELTS+1];
 
-    // Create GLPK problem
-    prob = glp_create_prob();
-    glp_add_cols(prob, PLACEMENT_LP_NUM_COLS);
-    glp_add_rows(prob, PLACEMENT_LP_NUM_ROWS);
+    /*********** END GLPK *****************/
+
+    // Set bounds for the min yield: between 0 and 1.0
+    glp_set_col_bnds(prob, LP_OBJ_COL, GLP_DB, 0.0, 1.0);
+    glp_set_obj_coef(prob, LP_OBJ_COL, 1.0);
 
     // Set bounds for the e_ij: binary if !rational
     for (i = 0; i < flex_prob->num_services; i++) {
         for (j = 0; j < flex_prob->num_servers; j++) {
             if (rational) {
                 glp_set_col_kind(prob, LP_E_IJ_COL, GLP_CV);
-                glp_set_col_bnds(prob, LP_E_IJ_COL, GLP_DB, 0.0, 1.0);
             } else {
                 glp_set_col_kind(prob, LP_E_IJ_COL, GLP_BV);
             }
+            glp_set_col_bnds(prob, LP_E_IJ_COL, GLP_DB, 0.0, 1.0);
             glp_set_col_bnds(prob, LP_Y_IJ_COL, GLP_DB, 0.0, 1.0);
         }
     }
 
-    //  (A) for all i: sum_j e_ij = 1
-    for (i = 0; i < flex_prob->num_services; i++) {
-        glp_set_row_bnds(prob, row, GLP_FX, 1.0, 1.0);
-        for (j = 0; j < flex_prob->num_servers; j++) {
-            ia[elt] = row; ja[elt] = LP_E_IJ_COL; ra[elt] = 1.0; elt++;
-        }
-        row++;
-    }
+    glp_set_row_bnds(prob, row, GLP_FX, 1.0, 1.0);
+    // upper bound 0...
+    glp_set_row_bnds(prob, row, GLP_UP, LP_IGNORE, 0.0);
+    // lower bound 0...
+    glp_set_row_bnds(prob, row, GLP_UP, LP_IGNORE, 0.0);
 
-    //  (B) for all i, j:  y_ih <= e_ij <=> y_ij - e_ij <= 0.0
-    for (i = 0; i < flex_prob->num_services; i++) {
-        for (j = 0; j < flex_prob->num_servers; j++) {
-            glp_set_row_bnds(prob, row, GLP_UP, LP_IGNORE, 0.0);
-            ia[elt] = row; ja[elt] = LP_Y_IJ_COL; ra[elt] = 1.0;  elt++;
-            ia[elt] = row; ja[elt] = LP_E_IJ_COL; ra[elt] = -1.0; elt++;
-            row++;
-        }
-    }
-   
-    //  (C) for all i: sum_h y_ih >= sla_i
-    for (i = 0; i < flex_prob->num_services; i++) {
-        glp_set_row_bnds(prob, row, GLP_LO, flex_prob->slas[i], LP_IGNORE);
-        for (j = 0; j < flex_prob->num_servers; j++) {
-            ia[elt] = row; ja[elt] = LP_Y_IJ_COL; ra[elt] = 1.0; elt++;
-        }
-        row++;
-    }
-
-    //  (D) for all h, r:  sum_i r_ij*e_ih <= 1
-    for (j = 0; j < flex_prob->num_servers; j++) {
-        for (k = 0; k < flex_prob->num_rigid; k++) {
-            glp_set_row_bnds(prob, row, GLP_UP, LP_IGNORE, 
-                flex_prob->rigid_capacities[j][k]);
-            for (i = 0; i < flex_prob->num_services; i++) {
-                ia[elt] = row; ja[elt] = LP_E_IJ_COL; 
-                ra[elt] = flex_prob->rigid_needs[i][k]; elt++;
-            }
-            row++;
-        }
-    }
-
-    //  (E) for all h, f:  sum_i r_ij*y_ih <= 1
-    for (j = 0; j < flex_prob->num_servers; j++) {
-        for (k = 0; k < flex_prob->num_fluid; k++) {
-            glp_set_row_bnds(prob, row, GLP_UP, LP_IGNORE, 
-                flex_prob->fluid_capacities[j][k]);
-            for (i = 0; i < flex_prob->num_services; i++) {
-                ia[elt] = row; ja[elt] = LP_Y_IJ_COL; 
-                ra[elt] = flex_prob->fluid_needs[i][k]; elt++;
-            }
-            row++;
-        }
-    }
-
-    //  (F) for all i: (sum_h y_ih - sla_i)/(1-sla_i) >= Y <=>
-    //      sum_h y_ih + Y (sla_i - 1) >= sla_i 
-    for (i = 0; i < flex_prob->num_services; i++) {
-        glp_set_row_bnds(prob, row, GLP_LO, flex_prob->slas[i], LP_IGNORE);
-        for (j = 0; j < flex_prob->num_servers; j++) {
-            ia[elt] = row; ja[elt] = LP_Y_IJ_COL; ra[elt] = 1.0; elt++;
-        }
-        ia[elt] = row; ja[elt] = LP_OBJ_COL; 
-        ra[elt] = flex_prob->slas[i] - 1.0;
-        elt++; row++;
-    }
-
+    // load matrix...
     glp_load_matrix(prob, LP_NUM_ELTS, ia, ja, ra);
 
-    // Set bounds for the min yield: between 0 and 1.0
-    glp_set_col_bnds(prob, LP_OBJ_COL, GLP_DB, 0.0, 1.0);
-    glp_set_obj_dir(prob, GLP_MAX);
-    glp_set_obj_coef(prob, LP_OBJ_COL, 1.0);
-
-    return prob;
-
 }
-
-int glp_stderr_null_out(void *info, const char *s) 
-{
-    return 1;
-}
-
-/* GLPK  solver
- * Returns 0 on success
- * Returns 1 if couldn't solve
- * Returns 2 if time limit was reached
- */
-int solve_linear_program(glp_prob *prob, int rational)
-{
-    int solver_status, solution_status;
-
-#ifdef DEBUG
-    fprintf(stderr, "Writing LP to file 'linearprogram'...");
-    glp_write_lp(prob, NULL, "linearprogram");
-    fprintf(stderr, "done\n");
-#else
-    // kill lp output
-    glp_term_hook(&glp_stderr_null_out, NULL);
-#endif
-
-    if (rational) {
-#ifdef DEBUG
-        fprintf(stderr, "Solving a rational LP...\n");
-#endif
-        solver_status = glp_simplex(prob, NULL);
-        solution_status = (glp_get_status(prob) != GLP_OPT);
-    } else {
-#ifdef DEBUG
-        fprintf(stderr, "Solving a MILP...\n");
-#endif
-        glp_iocp parm;
-        glp_init_iocp(&parm);
-        parm.presolve = GLP_ON;
-        parm.tm_lim = GLPK_TIME_LIMIT;
-        solver_status = glp_intopt(prob, &parm);
-        solution_status = (glp_mip_status(prob) != GLP_OPT);
-    }
-#ifdef DEBUG
-    fprintf(stderr, "solver_stat: %d, ", solver_status);
-    fprintf(stderr, "solution_stat: %d\n", solution_status);
-    fprintf(stderr, "Writing LP solution to file 'solution'...");
-    glp_write_sol(prob, "solution");
-    fprintf(stderr, "done\n");
-#endif
-
-  // Reached the time limit
-  if (solver_status == GLP_ETMLIM) {
-    return 2;
-  }
-
-  // Failed for some other reason
-  if ((solver_status) || (solution_status)) {
-    return 1;
-  }
-
-  return 0;
-}
-#endif
-
-flexsched_solution LPBOUND_scheduler(char *name, char **options)
+flexsched_solution_t LPBOUND_scheduler(char *name, char **options)
 {
     flexsched_solution flex_soln = new_flexsched_solution();
     double objval;
