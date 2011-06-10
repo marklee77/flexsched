@@ -17,26 +17,24 @@
     (2*(flex_prob->num_services)*(flex_prob->num_servers)+1)
 
 // Number of rows  
-//  (A) for all i      sum_h e_ih = 1:                N rows
-//  (B) for all i,h    y_ih <= e_ih                   NH rows
-//  (D) for all h, jr  sum_i r_ij*e_ih +              HR rows
-//  (E) for all h, jf  sum_i r_ij*y_ih <= 1           
-//  (F) for all i      (sum_h y_ih - sla_i)/(1-sla_i) >= Y    N rows
-#define PLACEMENT_LP_NUM_ROWS (\
-    2*flex_prob->num_services+\
+// (A) for all J: sum_N e_{j,n} = 1                
+// (B) for all J: sum_N y_{j,n} >= Y
+// (C) for all J,N: y_{j,n} <= e_{j,n}
+// (D) for all J,N,R: e_{j,n}*a_{j,r}+y_{j,n}*b_{j,r} <= u_{n,r}
+// (E) for all N,R: sum_J e_{j,n}*c_{j,r} + y_{j,n}*b_{j,r} <= t_{n,r}
+#define PLACEMENT_LP_NUM_ROWS (2*flex_prob->num_services+\
     flex_prob->num_services*flex_prob->num_servers+\
+    flex_prob->num_services*flex_prob->num_servers*flex_prob->num_resources+\
     flex_prob->num_servers*flex_prob->num_resources)
 
 // non-zero matrix elements
-// Constraint A: N rows of H elements -- N*H
-// Constraint B: N*H rows of 2 elements -- N*H*2
-// Constraint C: N rows of H elements -- N*H
-// Constraint D: H*R rows of N elements -- H*R*N
-// Constraint E: H*F rows of N elements -- H*F*N
-// Constraint F: N rows of H+1 elements -- N*(H+1);
-#define PLACEMENT_LP_NUM_ELTS \
-    ((flex_prob->num_services)*(flex_prob->num_servers)*\
-    (5+(flex_prob->num_rigid)+(flex_prob->num_fluid))+(flex_prob->num_services))
+// (A) J rows with N elements (J*N)
+// (B) J rows with N elements (J*N)
+// (C) J*N rows               (J*N)
+// (D) J*N*R rows             (J*N*R)
+// (E) N*R rows of J elements (J*N*R)
+#define PLACEMENT_LP_NUM_ELTS (flex_prob->num_services*flex_prob->num_servers*(\
+    3+2*flex_prob->num_resources))
 
 #ifdef CPLEX
 
@@ -56,6 +54,7 @@
     ((flex_prob->num_servers)*((flex_prob->num_services)+i)+j)
 #define PLACEMENT_LP_OBJ_COL  \
     (2*(flex_prob->num_services)*(flex_prob->num_servers))
+
 #define PLACEMENT_LP_MATRIX_DECL \
     int ia[PLACEMENT_LP_NUM_ELTS];\
     int ja[PLACEMENT_LP_NUM_ELTS];\
@@ -67,11 +66,12 @@
 
 LP_FUNC_DECL(create_placement_lp, int rational) 
 {
-    int status = 0;
     int i, j, k;
+
+    int status = 0;
     double obj, bound, range;
-    int row, elt;
     char type;
+    int row = 0, elt = 0;
 
     PLACEMENT_LP_MATRIX_DECL;
 
@@ -83,11 +83,7 @@ LP_FUNC_DECL(create_placement_lp, int rational)
     range = 1.0;
 
     // Add e_ij columns
-    if (rational) {
-        type = CPX_CONTINUOUS;
-    } else {
-        type = CPX_BINARY;
-    }
+    type = rational ? (CPX_CONTINUOUS) : (CPX_BINARY);
     for (i = 0; i < flex_prob->num_services; i++) {
         for (j = 0; j < flex_prob->num_servers; j++) {
             CPXnewcols(env, lp, 1, &obj, &bound, &range, &type, NULL);
@@ -109,88 +105,82 @@ LP_FUNC_DECL(create_placement_lp, int rational)
     elt = 0; // element counter
     row = 0; // row counter
 
-    //  (A) for all i: sum_j e_ij = 1
+    // (A) for all J: sum_N e_{j,n} = 1                
     type = 'E';
     bound = 1.0;
     for (i = 0; i < flex_prob->num_services; i++) {
         CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
         for (j = 0; j < flex_prob->num_servers; j++) {
-            ia[elt] = row; ja[elt] = LP_E_IJ_COL; ra[elt] = 1.0; elt++;
+            ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_E_IJ; 
+            ra[elt] = 1.0; elt++;
         }
         row++;
     }
 
-    //  (B) for all i, j:  y_ih <= e_ij <=> y_ij - e_ij <= 0.0
+    // (B) for all J: sum_N y_{j,n} >= Y
+    type = 'L';
+    bound = 0.0;
+    for (i = 0; i < flex_prob->num_services; i++) {
+        CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
+        for (j = 0; j < flex_prob->num_servers; j++) {
+            ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_Y_IJ; 
+            ra[elt] = -1.0; elt++;
+        }
+        ia[elt] = row; ja[elt] = PLACEMENT_LP_OBJ_COL;
+        ra[elt] = flex_prob->slas[i] 1.0;
+        elt++; row++;
+    }
+
+    // (C) for all J,N: y_{j,n} <= e_{j,n}
     type = 'L';
     bound = 0.0;
     for (i = 0; i < flex_prob->num_services; i++) {
         for (j = 0; j < flex_prob->num_servers; j++) {
             CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
-            ia[elt] = row; ja[elt] = LP_Y_IJ_COL; ra[elt] = 1.0;  elt++;
-            ia[elt] = row; ja[elt] = LP_E_IJ_COL; ra[elt] = -1.0; elt++;
+            ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_Y_IJ; 
+            ra[elt] = 1.0; elt++;
+            ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_E_IJ; 
+            ra[elt] = -1.0; elt++;
             row++;
         }
     }
    
-    type = 'G';
-    //  (C) for all i: sum_h y_ih >= sla_i
-    for (i = 0; i < flex_prob->num_services; i++) {
-        bound = flex_prob->slas[i];
-        CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
-        for (j = 0; j < flex_prob->num_servers; j++) {
-            ia[elt] = row; ja[elt] = LP_Y_IJ_COL; ra[elt] = 1.0; elt++;
-        }
-        row++;
-    }
-
+    // (D) for all J,N,R: e_{j,n}*a_{j,r}+y_{j,n}*b_{j,r} <= u_{n,r}
     type = 'L';
-    //  (D) for all h, r:  sum_i r_ij*e_ih <= capacity
-    for (j = 0; j < flex_prob->num_servers; j++) {
-        for (k = 0; k < flex_prob->num_rigid; k++) {
-            bound = flex_prob->rigid_capacities[j][k];
-            CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
-            for (i = 0; i < flex_prob->num_services; i++) {
-                ia[elt] = row; ja[elt] = LP_E_IJ_COL; 
-                ra[elt] = flex_prob->rigid_needs[i][k]; elt++;
-            }
-            row++;
-        }
-    }
-
-    //  (E) for all h, f:  sum_i r_ij*y_ih <= 1
-    for (j = 0; j < flex_prob->num_servers; j++) {
-        for (k = 0; k < flex_prob->num_fluid; k++) {
-            bound = flex_prob->fluid_capacities[j][k];
-            CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
-            for (i = 0; i < flex_prob->num_services; i++) {
-                ia[elt] = row; ja[elt] = LP_Y_IJ_COL; 
-                ra[elt] = flex_prob->fluid_needs[i][k]; elt++;
-            }
-            row++;
-        }
-    }
-
-    type = 'G';
-    //  (F) for all i: (sum_h y_ih - sla_i)/(1-sla_i) >= Y <=>
-    //      sum_h y_ih + Y (sla_i - 1) >= sla_i 
     for (i = 0; i < flex_prob->num_services; i++) {
-        bound = flex_prob->slas[i];
-        CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
         for (j = 0; j < flex_prob->num_servers; j++) {
-            ia[elt] = row; ja[elt] = LP_Y_IJ_COL; ra[elt] = 1.0; elt++;
+            for (k = 0; k < flex_prob->num_resources; k++) {
+                bound = flex_prob->servers[j]->unit_capacities[k];
+                CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
+                ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_E_IJ; 
+                ra[elt] = flex_prob->services[i]->unit_rigid_requirements[k]; 
+                elt++;
+                ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_Y_IJ; 
+                ra[elt] = flex_prob->services[i]->unit_fluid_needs[k]; elt++;
+                row++;
+            }
         }
-        ia[elt] = row; ja[elt] = LP_OBJ_COL; 
-        ra[elt] = flex_prob->slas[i] - 1.0;
-        elt++; row++;
     }
 
-    status = CPXchgcoeflist (env, lp, LP_NUM_ELTS, ia, ja, ra);
-    if (status) return 1;
+    // (E) for all N,R: sum_J e_{j,n}*c_{j,r} + y_{j,n}*b_{j,r} <= t_{n,r}
+    type = 'L';
+    for (j = 0; j < flex_prob->num_servers; j++) {
+        for (k = 0; k < flex_prob->num_resources; k++) {
+            bound = flex_prob->servers[j]->total_capacities[k];
+            CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
+            for (i = 0; i < flex_prob->num_services; i++) {
+                ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_E_IJ; 
+                ra[elt] = flex_prob->services[i]->total_rigid_requirements[k]; 
+                elt++;
+                ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_Y_IJ; 
+                ra[elt] = flex_prob->services[i]->total_fluid_needs[k]; elt++;
+            }
+            row++;
+        }
+    }
 
-    CPXchgobjsen (env, lp, CPX_MAX);
-
-    *retenv = env;
-    *retlp = lp;
+    CPXchgcoeflist (env, lp, PLACEMENT_LP_NUM_ELTS, ia, ja, ra);
+    CPXchgobjsen(env, lp, CPX_MAX);
 
     return 0;
 
@@ -222,36 +212,22 @@ int solve_linear_program(CPXENVptr env, CPXLPptr lp, int rational)
 
 glp_prob *create_placement_lp(int rational) 
 {
-    glp_prob *prob;
     int i, j, k;
-    int row, elt;
-    int ia[LP_NUM_ELTS+1];    // array of matrix element row indicies
-    int ja[LP_NUM_ELTS+1];    // array of matrix element column indicies
-    double ra[LP_NUM_ELTS+1]; // array of matrix element coefficients
+
+    glp_prob *prob;
+    int row = 1, elt = 1;
+    int ia[PLACEMENT_LP_NUM_ELTS+1];    
+    int ja[PLACEMENT_LP_NUM_ELTS+1];   
+    double ra[PLACEMENT_LP_NUM_ELTS+1];
 
     // Create GLPK problem
     prob = glp_create_prob();
-
-    glp_add_cols(prob, LP_NUM_COLS);
-    glp_add_rows(prob, LP_NUM_ROWS);
-
-#ifdef DEBUG
-    glp_set_prob_name(prob, "task placement problem");
-    glp_set_col_name(prob, LP_OBJ_COL, "Y");
-    glp_set_obj_name(prob, "minimum scaled yield");
-#endif
+    glp_add_cols(prob, PLACEMENT_LP_NUM_COLS);
+    glp_add_rows(prob, PLACEMENT_LP_NUM_ROWS);
 
     // Set bounds for the e_ij: binary if !rational
     for (i = 0; i < flex_prob->num_services; i++) {
         for (j = 0; j < flex_prob->num_servers; j++) {
-#ifdef DEBUG
-
-            char buffer[10];
-            sprintf(buffer, "e_{%d,%d}", i, j);
-            glp_set_col_name(prob, LP_E_IJ_COL, buffer);
-            sprintf(buffer,"y_{%d,%d}", i, j);
-            glp_set_col_name(prob, LP_Y_IJ_COL, buffer);
-#endif
             if (rational) {
                 glp_set_col_kind(prob, LP_E_IJ_COL, GLP_CV);
                 glp_set_col_bnds(prob, LP_E_IJ_COL, GLP_DB, 0.0, 1.0);
@@ -261,9 +237,6 @@ glp_prob *create_placement_lp(int rational)
             glp_set_col_bnds(prob, LP_Y_IJ_COL, GLP_DB, 0.0, 1.0);
         }
     }
-
-    elt = 1; // element counter
-    row = 1; // row counter
 
     //  (A) for all i: sum_j e_ij = 1
     for (i = 0; i < flex_prob->num_services; i++) {

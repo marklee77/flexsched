@@ -435,7 +435,7 @@ int sanity_check(flexsched_solution_t flex_soln)
     for (i = 0; i < flex_soln->prob->num_servers; i++) {
         for (j = 0; j < flex_soln->prob->num_resources; j++) {
             if (flex_soln->prob->servers[i]->total_capacities[j] < 
-                allocated_resources[i][j] + EPSILON) {
+                allocated_resources[i][j]) {
                 fprintf(stderr, 
                     "Error: Total resource allocation on server %d exceeds capacity in dimension %d (%.3f/%.3f).\n",
                     i, j, allocated_resources[i][j], 
