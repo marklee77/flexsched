@@ -410,11 +410,9 @@ flexsched_solution_t METAGREEDY_scheduler(
                     sprintf(flex_soln->misc_output, "S%d P%d", is+1, ip+1);
                 }
             }
-
             free_flexsched_solution(curr_soln);
         }
     }
-
     return flex_soln;
 }
 

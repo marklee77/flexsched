@@ -27,14 +27,15 @@
     flex_prob->num_servers*flex_prob->num_resources)
 
 // non-zero matrix elements
-// (A) J rows with N elements (J*N)
-// (B) J rows with N elements (J*N)
-// (C) J*N rows               (J*N)
-// (D) J*N*R rows             (J*N*R)
-// (E) N*R rows of J elements (J*N*R)
-#define PLACEMENT_LP_NUM_ELTS (flex_prob->num_services*flex_prob->num_servers*(\
-    3+2*flex_prob->num_resources))
-
+// (A) J rows with N elements     (J*N)
+// (B) J rows with N+1 elements   (J*(N+1))
+// (C) J*N rows with 2 elements   (2*J*N)
+// (D) J*N*R rows with 2 elements (2*J*N*R)
+// (E) N*R rows of 2*J elements   (2*J*N*R)
+// total: J*(1+4*N*(R+1))
+#define PLACEMENT_LP_NUM_ELTS (flex_prob->num_services*\
+    (1+4*flex_prob->num_servers*(1+flex_prob->num_resources)))
+        
 linear_program_t create_placement_lp(
     flexsched_problem_t flex_prob, int rational)
 {
@@ -158,7 +159,7 @@ flexsched_solution_t MILP_scheduler(
     flexsched_solution_t flex_soln = new_flexsched_solution(flex_prob);
     linear_program_t lp = create_placement_lp(flex_prob, INTEGER);
     int i, j;
-    int status;
+    int status = 1;
     double val;
 
     status = solve_linear_program(lp, INTEGER);

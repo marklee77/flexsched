@@ -298,7 +298,7 @@ void maximize_minimum_yield_on_server(
     for (i = 0; i < flex_soln->prob->num_resources; i++) {
         load = compute_fluid_load(flex_soln, server, i);
         if (load > 0.0) minyield = MIN(minyield, 
-            compute_available_resource(flex_soln, server, i) / load);
+            compute_available_resource(flex_soln, server, i) / load - EPSILON);
     }
 
     for (i = 0; i < flex_soln->prob->num_services; i++) {

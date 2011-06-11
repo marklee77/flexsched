@@ -112,10 +112,11 @@ flexsched_solution_t GREEDY_scheduler(flexsched_problem_t, char *, char **);
 flexsched_solution_t METAGREEDY_scheduler(flexsched_problem_t, char *, char **);
 flexsched_solution_t METAGREEDYLIGHT_scheduler(flexsched_problem_t, char *, 
     char **);
+flexsched_solution_t LPBOUND_scheduler(flexsched_problem_t, char *, char **);
+flexsched_solution_t MILP_scheduler(flexsched_problem_t, char *, char **);
+flexsched_solution_t LPROUNDING_scheduler(flexsched_problem_t, char *, char **);
+
 /*
-flexsched_solution LPBOUND_scheduler(char*, char **);
-flexsched_solution MILP_scheduler(char *, char **);
-flexsched_solution LPROUNDING_scheduler(char *, char **);
 flexsched_solution VP_scheduler(char *, char **);
 flexsched_solution HVP_scheduler(char *, char **);
 flexsched_solution METAHVP_scheduler(char *, char **);
