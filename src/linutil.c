@@ -179,6 +179,7 @@ int solve_linear_program(linear_program_t lp, int rational)
     } else {
         glp_iocp parm;
         glp_init_iocp(&parm);
+        parm.msg_lev = GLP_MSG_ERR;
         parm.presolve = GLP_ON;
         parm.tm_lim = GLPK_TIME_LIMIT;
         solver_status = glp_intopt(lp, &parm);
@@ -194,6 +195,7 @@ int solve_linear_program(linear_program_t lp, int rational)
 }
 
 double get_obj_val(linear_program_t lp) {
+    if (GLP_OPT == glp_mip_status(lp)) return glp_mip_obj_val(lp);
     return glp_get_obj_val(lp);
 }
 
@@ -202,6 +204,7 @@ int get_mip_col_val(linear_program_t lp, int col) {
 }
 
 double get_col_val(linear_program_t lp, int col) {
+    if (GLP_OPT == glp_mip_status(lp)) return glp_mip_col_val(lp, col+1);
     return glp_get_col_prim(lp, col+1);
 }
 

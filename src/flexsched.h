@@ -10,7 +10,7 @@
 /****************************/
 /**** PARAMETER CONSTANTS ***/
 /****************************/
-#define EPSILON 0.00001
+#define EPSILON 0.000001
 #define RANDOM_SEED 6337
 
 #define BEST_FIT 1

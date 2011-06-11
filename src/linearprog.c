@@ -177,7 +177,8 @@ flexsched_solution_t MILP_scheduler(
         for (j = 0; j < flex_prob->num_servers; j++) {
             if(get_mip_col_val(lp, PLACEMENT_LP_COL_E_IJ)) {
                 flex_soln->mapping[i] = j;
-                flex_soln->yields[i] = get_col_val(lp, PLACEMENT_LP_COL_Y_IJ);
+                flex_soln->yields[i] = 
+                    get_col_val(lp, PLACEMENT_LP_COL_Y_IJ) - EPSILON;
                 break;
             }
         }
@@ -220,8 +221,8 @@ flexsched_solution_t LPROUNDING_solver(
             if (service_can_fit_on_server_fast(flex_soln, i, j) && x > 0.0) {
                 feasible_servers[num_feasible_servers] = j;
                 weights[num_feasible_servers] = x;
-                yields[num_feasible_servers] = 
-                    get_col_val(lp, PLACEMENT_LP_COL_Y_IJ);
+                yields[num_feasible_servers] = MAX(EPSILON, 
+                    get_col_val(lp, PLACEMENT_LP_COL_Y_IJ) - EPSILON);
                 total_weight += x;
                 num_feasible_servers++;
             }
@@ -268,17 +269,19 @@ flexsched_solution_t LPROUNDING_scheduler(
     return flex_soln;
 }
 
-#if 0
+#define ALLOC_LP_NUM_COLS (flex_soln->prob->num_services)
 
-#define ALLOC_LP_NUM_COLS (flex_prob->num_services+1)
-#define ALLOC_LP_Y_I_COL i
-#define ALLOC_LP_OBJ_COL (flex_prob->num_services)
-
-#define ALLOC_LP_NUM_ROWS (flex_prob->num_servers*flex_prob->num_fluid+1)
-#define ALLOC_LP_NUM_ELTS ((flex_prob->num_fluid+1)*flex_prob->num_services+1)
-
-#define ALLOC_LP_ROW_JK (flex_prob->num_fluid*j+k)
-#define ALLOC_LP_OBJ_ROW (flex_prob->num_servers*flex_prob->num_fluid)
+// (A) for all J,R: y_{j}*b_{j,r} <= u_{n,r} - a_{j,r}
+// (B) for all N,R: sum_J y_{j}*b_{j,r} <= t_{n,r} - sum_J c_{j,r}
+// total rows: J*R+N*R = (J+N)*R, total elts: J*R+J*R = 2*J*R
+#define ALLOC_LP_NUM_ROWS (\
+    (flex_soln->prob->num_services+flex_soln->prob->num_servers)*\
+    flex_soln->prob->num_resources)
+#define ALLOC_LP_NUM_ELTS (\
+    2*flex_soln->prob->num_services*flex_soln->prob->num_resources)
+#define ALLOC_LP_ROW_B_IK (\
+    flex_soln->prob->num_services*flex_soln->prob->num_resources+\
+    flex_soln->prob->num_resources*flex_soln->mapping[i]+k)
 
 linear_program_t create_allocation_lp(
     flexsched_solution flex_soln, float minyield)
@@ -293,147 +296,57 @@ linear_program_t create_allocation_lp(
     linear_program_t lp = new_linear_program(ALLOC_LP_NUM_COLS, 
         ALLOC_LP_NUM_ROWS);
 
-    // set fluid capacity constraints...
-    type = 'L';
-    for (j = 0; j < flex_prob->num_servers; j++) {
-        for (k = 0; k < flex_prob->num_fluid; k++) {
-            set_row_params(lp, row, LP_IGNORE, flex_soln->prob)
-            // not totally happy about the EPSILON, but it seems necessary to
-            // keep everything within bounds
-            bound = flex_prob->fluid_capacities[j][k] - EPSILON;
-            CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
+    for (i = 0; i < flex_soln->prob->num_services; i++) {
+        set_col_params(lp, i, RATIONAL, minyield, 1.0, 1.0);
+    }
+
+    // initialize matrix row and element
+    elt = 0;
+    row = 0;
+
+    // (A) for all J: y_j >= Y
+    for (i = 0; i < flex_soln->prob->num_services; i++) {
+        set_row_params(lp, row, 0.0, LP_IGNORE);
+        ia[elt] = row; ja[elt] = i; ra[elt] = 1.0; elt++;
+        ia[elt] = row; ja[elt] = ALLOC_LP_COL_OBJ; ra[elt] = -1.0; elt++;
+        row++;
+    }
+
+    // (B) for all J,R: y_{j}*b_{j,r} <= u_{n,r} - a_{j,r}
+    for (i = 0; i < flex_soln->prob->num_services; i++) {
+        for (k = 0; k < flex_soln->prob->num_resources; k++) {
+            set_row_params(lp, row, LP_IGNORE, flex_soln->prob->servers[
+                flex_soln->mapping[i]]->unit_capacities[k] -
+                flex_soln->prob->services[i]->unit_rigid_requirements[k]);
+            ia[elt] = row; ja[elt] = i; 
+            ra[elt] = flex_soln->prob->services[i]->unit_fluid_needs[k];
+            elt++; row++;
         }
     }
 
-    elt = 1;
-
-    for (i = 0; i < flex_prob->num_services; i++) {
-    }
-
-    // fill in variables
-    // for all j,k sum_i (for i mapped to j) need_ik * y_i <= capacity_jk
-    // add y_i columns
-    obj = 0.0;
-    range = 1.0;
-    for (i = 0; i < flex_prob->num_services; i++) {
-        bound = flex_prob->slas[i] + minyield * (1.0 - flex_prob->slas[i]);
-        CPXnewcols(env, lp, 1, &obj, &bound, &range, &type, NULL);
-        j = flex_soln->mapping[i];
-        for (k = 0; k < flex_prob->num_fluid; k++) {
-            ia[elt] = ALLOC_LP_ROW_JK; ja[elt] = ALLOC_LP_Y_I_COL; 
-            ra[elt] = flex_prob->fluid_needs[i][k]; elt++;
+    // FIXME: run once for each server/resource
+    set_row_params(lp, FIXE, LP_IGNORE, 
+        compute_available_resource(flex_soln, flex_soln->mapping[i], k));
+    // (C) for all N,R: sum_J y_{j}*b_{j,r} <= t_{n,r} - sum_J c_{j,r}
+    for (i = 0; i < flex_soln->prob->num_services; i++) {
+        for (k = 0; k < flex_soln->prob->num_resources; k++) {
+            ia[elt] = FIXME; ja[elt] = i; 
+            ra[elt] = flex_soln->prob->services[i]->total_fluid_needs[k];
+            elt++;
         }
     }
 
-    // add objective column
-    obj = 1.0;
-    bound = minyield;
-    CPXnewcols(env, lp, 1, &obj, &bound, &range, &type, NULL);
-
-    rowmin = 0.0;
-    for (i = 0; i < flex_prob->num_services; i++) {
-        ia[elt] = ALLOC_LP_OBJ_ROW; ja[elt] = ALLOC_LP_Y_I_COL; 
-        ra[elt] = 1.0 / (1.0 - flex_prob->slas[i]); elt++;
-        rowmin += flex_prob->slas[i] / (1.0 - flex_prob->slas[i]);
-    }
-
-    // objective row
-    type = 'G';
-    CPXnewrows(env, lp, 1, &rowmin, &type, NULL, NULL);
-
-    ia[elt] = ALLOC_LP_OBJ_ROW; ja[elt] = ALLOC_LP_OBJ_COL;
-    ra[elt] = -1.0*flex_prob->num_services; elt++;
-
-    status = CPXchgcoeflist (env, lp, ALLOC_LP_NUM_ELTS, ia, ja, ra);
-    if (status) return 1;
-
-    CPXchgobjsen (env, lp, CPX_MAX);
-
-    *retenv = env;
-    *retlp = lp;
-
-    return 0;
+    return lp;
 }
-
-glp_prob *create_allocation_lp(flexsched_solution flex_soln, float minyield) 
-{
-    glp_prob *prob;
-    int i, j, k;
-    int elt;
-    int ia[ALLOC_LP_NUM_ELTS+1];
-    int ja[ALLOC_LP_NUM_ELTS+1];
-    double ra[ALLOC_LP_NUM_ELTS+1];
-    double rowmin;
-
-    // Create GLPK problem
-    prob = glp_create_prob();
-
-    glp_add_cols(prob, ALLOC_LP_NUM_COLS);
-    glp_add_rows(prob, ALLOC_LP_NUM_ROWS);
-
-    // set fluid capacity constraints...
-    for (j = 0; j < flex_prob->num_servers; j++) {
-        for (k = 0; k < flex_prob->num_fluid; k++) {
-            // not totally happy about the EPSILON, but it seems necessary to
-            // keep everything within bounds
-            glp_set_row_bnds(prob, ALLOC_LP_ROW_JK, 
-                GLP_UP, LP_IGNORE, flex_prob->fluid_capacities[j][k] - EPSILON);
-        }
-    }
-
-    elt = 1;
-
-    // fill in variables
-    // for all j,k sum_i (for i mapped to j) need_ik * y_i <= capacity_jk
-    for (i = 0; i < flex_prob->num_services; i++) {
-        glp_set_col_kind(prob, ALLOC_LP_Y_I_COL, GLP_CV);
-        glp_set_col_bnds(prob, ALLOC_LP_Y_I_COL, GLP_DB, 
-            flex_prob->slas[i] + minyield * (1.0 - flex_prob->slas[i]), 1.0);
-        j = flex_soln->mapping[i];
-        for (k = 0; k < flex_prob->num_fluid; k++) {
-            ia[elt] = ALLOC_LP_ROW_JK; ja[elt] = ALLOC_LP_Y_I_COL; 
-            ra[elt] = flex_prob->fluid_needs[i][k]; elt++;
-        }
-    }
-
-    // Set bounds for the min yield: between 0 and 1.0
-    glp_set_col_name(prob, ALLOC_LP_OBJ_COL, "Y");
-    glp_set_col_bnds(prob, ALLOC_LP_OBJ_COL, GLP_DB, minyield, 1.0);
-
-    rowmin = 0.0;
-    for (i = 0; i < flex_prob->num_services; i++) {
-        ia[elt] = ALLOC_LP_OBJ_ROW; ja[elt] = ALLOC_LP_Y_I_COL; 
-        ra[elt] = 1.0 / (1.0 - flex_prob->slas[i]); elt++;
-        rowmin += flex_prob->slas[i] / (1.0 - flex_prob->slas[i]);
-    }
-
-    glp_set_row_bnds(prob, ALLOC_LP_OBJ_ROW, GLP_LO, rowmin, LP_IGNORE);
-
-    ia[elt] = ALLOC_LP_OBJ_ROW; ja[elt] = ALLOC_LP_OBJ_COL;
-    ra[elt] = -1.0*flex_prob->num_services; elt++;
-
-    glp_set_obj_dir(prob, GLP_MAX);
-    glp_set_obj_coef(prob, ALLOC_LP_OBJ_COL, 1.0);
-
-    glp_load_matrix(prob, ALLOC_LP_NUM_ELTS, ia, ja, ra);
-
-    return prob;
-
-}
-
-#endif
 
 void maximize_average_yield_given_minimum(
     flexsched_solution_t flex_soln, float minyield)
 {
-#if 0
     int i;
-    double val;
     linear_program_t lp = create_allocation_lp(flex_soln, minyield);
 
     for (i = 0; i < flex_prob->num_services; i++) {
-        flex_soln->yields[i] = get_col_val(lp, ALLOC_LP_COL_Y_I);
+        flex_soln->yields[i] = get_col_val(lp, i) - EPSILON;
     }
-#endif
     return;
 }
