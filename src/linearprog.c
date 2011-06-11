@@ -1,162 +1,4 @@
-#include "flexsched.h"
-
-#ifdef CPLEX
-
-#include <ilcplex/cplex.h>
-
-// CPLEX does zero indexed rows/cols, unlike GLPK
-#define PLACEMENT_LP_E_IJ_COL \
-    ((flex_prob->num_servers)*i+j)
-#define PLACEMENT_LP_Y_IJ_COL \
-    ((flex_prob->num_servers)*((flex_prob->num_services)+i)+j)
-#define PLACEMENT_LP_OBJ_COL  \
-    (2*(flex_prob->num_services)*(flex_prob->num_servers))
-
-typedef struct linear_program_s {
-    CPXENVptr *env;
-    CPXLPptr *lp;
-} *linear_program_t;
-
-// for now lps always maximize...
-linear_program_t new_linear_program(void)
-{
-    int status = 0;
-    linear_program_t lp = malloc(sizeof(linear_program_s));
-    lp->env = CPXopenCPLEX(&status);
-    lp->lp = CPXcreateprob(lp->env, &status, "")
-    CPXchgobjsen(lp->env, lp->lp, CPX_MAX);
-}
-
-void set_column_params(linear_program_t lp, int col, 
-    int rational, double lb, double ub, double obj)
-{
-    char type = rational ? (CPX_CONTINUOUS) : (CPX_BINARY);
-    ub -= lb; // ub is actually range, which is the amount allowed over the lb
-    CPXnewcols(lp->env, lp->lp, 1, &obj, &lb, &ub, &type, NULL);
-    return;
-}
-
-void set_row_params(
-    linear_program_t lp, int row, double bound, int xxx)
-{
-    type = 'E'; bound = 1.0;
-    CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
-}
-
-void load_matrix(linear_program_t lp, int elts, int ia[], int ja[], float ra[])
-{
-    CPXchgcoeflist(lp->env, lp->lp, elts, ia, ja, ra);
-}
-
-void free_linear_program(linear_program_t lp)
-{
-}
-
-int solve_linear_program(linear_program_t lp, int rational) {
-{
-    int status;
-
-    if (rational) {
-        status = CPXlpopt(lp->env, lp->lp);
-    } else {
-        status = CPXmipopt(lp->env, lp->lp);
-    }
-
-    return status;
-}
-
-#else
-
-#define GLPK_TIME_LIMIT 10*60*1000
-
-// GLPK does not use zero indexing, which seems like a waste.
-#define LP_E_IJ_COL ((flex_prob->num_servers)*i+j+1)
-#define LP_Y_IJ_COL ((flex_prob->num_servers)*((flex_prob->num_services)+i)+j+1)
-#define LP_OBJ_COL  (2*(flex_prob->num_services)*(flex_prob->num_servers)+1)
-
-#include <glpk.h>
-
-typedef glp_prob *linear_program_t;
-
-// for now lps always maximize...
-// fixme... parames for rows/cols?
-linear_program_t new_linear_program(void)
-{
-    linear_program_t lp = glp_create_prob();
-    glp_add_cols(lp, PLACEMENT_LP_NUM_COLS);
-    glp_add_rows(lp, PLACEMENT_LP_NUM_ROWS);
-    glp_set_obj_dir(lp, GLP_MAX);
-    return lp;
-}
-
-void set_column_params(linear_program_t lp, int col, 
-    int rational, double lb, double ub, double obj)
-{
-    glp_set_col_kind(lp, col, rational ? (GLP_CV) : (GLP_BV));
-    glp_set_col_bnds(lp, col, GLP_DB, lb, ub);
-    glp_set_obj_coef(lp, col, obj);
-}
-
-void set_row_params(
-    linear_program_t lp, int row, double bound, int xxx)
-{
-}
-
-void load_matrix(linear_program_t lp, int elts, int ia[], int ja[], float ra[])
-{
-}
-
-void free_linear_program(linear_program_t lp)
-{
-}
-
-int glp_stderr_null_out(void *info, const char *s) 
-{
-    return 1;
-}
-
-int solve_linear_program(linear_program_t lp, int rational)
-{
-    int solver_status, solution_status;
-
-    // kill lp output
-    glp_term_hook(&glp_stderr_null_out, NULL);
-
-    if (rational) {
-        solver_status = glp_simplex(prob, NULL);
-        solution_status = (glp_get_status(prob) != GLP_OPT);
-    } else {
-        glp_iocp parm;
-        glp_init_iocp(&parm);
-        parm.presolve = GLP_ON;
-        parm.tm_lim = GLPK_TIME_LIMIT;
-        solver_status = glp_intopt(prob, &parm);
-        solution_status = (glp_mip_status(prob) != GLP_OPT);
-    }
-
-    // Reached the time limit
-    if (solver_status == GLP_ETMLIM) {
-        return 2;
-    }
-
-    // Failed for some other reason
-    if ((solver_status) || (solution_status)) {
-        return 1;
-    }
-
-    return 0;
-}
-
-#endif
-
-/***********************************************************/
-/* Schedulers based on the new linear program              */
-/***********************************************************/
-
-#define RATIONAL 1
-#define INTEGER 0
-
-#define LP_IGNORE 666
+#include "linearprog.h"
 
 // Number of variables (called "columns"): 
 //  e_ij = H*(i-1)+j: 1 .. NH
@@ -164,6 +6,13 @@ int solve_linear_program(linear_program_t lp, int rational)
 //  Y: 2NH+1
 #define PLACEMENT_LP_NUM_COLS \
     (2*(flex_prob->num_services)*(flex_prob->num_servers)+1)
+
+#define PLACEMENT_LP_E_IJ_COL \
+    ((flex_prob->num_servers)*i+j)
+#define PLACEMENT_LP_Y_IJ_COL \
+    ((flex_prob->num_servers)*((flex_prob->num_services)+i)+j)
+#define PLACEMENT_LP_OBJ_COL  \
+    (2*(flex_prob->num_services)*(flex_prob->num_servers))
 
 // Number of rows  
 // (A) for all J: sum_N e_{j,n} = 1                
@@ -188,42 +37,34 @@ int solve_linear_program(linear_program_t lp, int rational)
 linear_program_t create_placement_lp(
     flexsched_problem_t flex_prob, int rational)
 {
-    int i, j, k;
-
-    /********** START CPLEX ***************/
-    int row = 0, elt = 0;
-
-    int ia[PLACEMENT_LP_NUM_ELTS];\
-    int ja[PLACEMENT_LP_NUM_ELTS];\
+    int ia[PLACEMENT_LP_NUM_ELTS];
+    int ja[PLACEMENT_LP_NUM_ELTS];
     double ra[PLACEMENT_LP_NUM_ELTS];
 
-    /********** END CPLEX ***************/
+    linear_program_t lp = new_linear_program(PLACEMENT_LP_NUM_COLS,
+        PLACEMENT_LP_NUM_ROWS);
 
-    // Add e_ij columns
+    int i, j, k;
+    int row, elt;
+
+    // Add set column types and bounds for all e_ij and y_ij
     for (i = 0; i < flex_prob->num_services; i++) {
         for (j = 0; j < flex_prob->num_servers; j++) {
-            type = rational ? (CPX_CONTINUOUS) : (CPX_BINARY);
-            CPXnewcols(env, lp, 1, &obj, &bound, &range, &type, NULL);
-        }
-    }
-
-    // Add y_ij columns
-    for (i = 0; i < flex_prob->num_services; i++) {
-        for (j = 0; j < flex_prob->num_servers; j++) {
-            type = CPX_CONTINUOUS;
-            CPXnewcols(env, lp, 1, &obj, &bound, &range, &type, NULL);
+            set_col_params(lp, PLACEMENT_LP_COL_E_IJ, rational, 0.0, 1.0, 0.0);
+            set_col_params(lp, PLACEMENT_LP_COL_Y_IJ, RATIONAL, 0.0, 1.0, 0.0);
         }
     }
 
     // objective column
-    obj = 1.0;
-    type = rational ? (CPX_CONTINUOUS) : (CPX_BINARY);
-    CPXnewcols(env, lp, 1, &obj, &bound, &range, &type, NULL);
+    set_col_params(lp, PLACEMENT_LP_COL_OBJ, RATIONAL, 0.0, 1.0, 1.0);
+
+    // initialize matrix row and element
+    elt = 0;
+    row = 0;
 
     // (A) for all J: sum_N e_{j,n} = 1                
     for (i = 0; i < flex_prob->num_services; i++) {
-        type = 'E'; bound = 1.0;
-        CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
+        set_row_params(lp, row, 1.0, 1.0);
         for (j = 0; j < flex_prob->num_servers; j++) {
             ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_E_IJ; 
             ra[elt] = 1.0; elt++;
@@ -231,10 +72,9 @@ linear_program_t create_placement_lp(
         row++;
     }
 
-    // (B) for all J: sum_N y_{j,n} >= Y
+    // (B) for all J: sum_N y_{j,n} >= Y <==> sum_N y_{j,n} - Y >= 0
     for (i = 0; i < flex_prob->num_services; i++) {
-        type = 'L'; bound = 0.0;
-        CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
+        set_row_params(lp, row, 0.0, LP_IGNORE);
         for (j = 0; j < flex_prob->num_servers; j++) {
             ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_Y_IJ; 
             ra[elt] = -1.0; elt++;
@@ -244,14 +84,13 @@ linear_program_t create_placement_lp(
         elt++; row++;
     }
 
-    // (C) for all J,N: y_{j,n} <= e_{j,n}
+    // (C) for all J,N: y_{j,n} <= e_{j,n} <==> e_{j,n} - y_{j,n} >= 0
     for (i = 0; i < flex_prob->num_services; i++) {
         for (j = 0; j < flex_prob->num_servers; j++) {
-            type = 'L'; bound = 0.0;
-            CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
-            ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_Y_IJ; 
-            ra[elt] = 1.0; elt++;
+            set_row_params(lp, row, 0.0, LP_IGNORE);
             ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_E_IJ; 
+            ra[elt] = 1.0; elt++;
+            ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_Y_IJ; 
             ra[elt] = -1.0; elt++;
             row++;
         }
@@ -261,9 +100,8 @@ linear_program_t create_placement_lp(
     for (i = 0; i < flex_prob->num_services; i++) {
         for (j = 0; j < flex_prob->num_servers; j++) {
             for (k = 0; k < flex_prob->num_resources; k++) {
-                type = 'L';
-                bound = flex_prob->servers[j]->unit_capacities[k];
-                CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
+                set_row_params(lp, row, LP_IGNORE, 
+                    flex_prob->servers[j]->unit_capacities[k])
                 ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_E_IJ; 
                 ra[elt] = flex_prob->services[i]->unit_rigid_requirements[k]; 
                 elt++;
@@ -277,9 +115,8 @@ linear_program_t create_placement_lp(
     // (E) for all N,R: sum_J e_{j,n}*c_{j,r} + y_{j,n}*b_{j,r} <= t_{n,r}
     for (j = 0; j < flex_prob->num_servers; j++) {
         for (k = 0; k < flex_prob->num_resources; k++) {
-            type = 'L';
-            bound = flex_prob->servers[j]->total_capacities[k];
-            CPXnewrows(env, lp, 1, &bound, &type, NULL, NULL);
+            set_row_params(lp, row, LP_IGNORE, 
+                flex_prob->servers[j]->total_capacities[k])
             for (i = 0; i < flex_prob->num_services; i++) {
                 ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_E_IJ; 
                 ra[elt] = flex_prob->services[i]->total_rigid_requirements[k]; 
@@ -292,134 +129,62 @@ linear_program_t create_placement_lp(
     }
 
     // now load matrix...
-    CPXchgcoeflist (env, lp, PLACEMENT_LP_NUM_ELTS, ia, ja, ra);
+    load_matrix(lp, PLACEMENT_LP_NUM_ELTS, ia, ja, ra);
 
-    return blah;
+    return lp;
 }
 
-linear_program_t create_placement_lp(
-    flexsched_problem_t flex_prob, int rational) 
+flexsched_solution_t LPBOUND_scheduler(
+    flexsched_problem_t flex_prob, char *name, char **options)
 {
-    int i, j, k;
-
-    /********** START GLPK ***************/
-    int row = 1, elt = 1;
-    int ia[PLACEMENT_LP_NUM_ELTS+1];    
-    int ja[PLACEMENT_LP_NUM_ELTS+1];   
-    double ra[PLACEMENT_LP_NUM_ELTS+1];
-
-    /*********** END GLPK *****************/
-
-    // Set bounds for the min yield: between 0 and 1.0
-    glp_set_col_bnds(prob, LP_OBJ_COL, GLP_DB, 0.0, 1.0);
-    glp_set_obj_coef(prob, LP_OBJ_COL, 1.0);
-
-    // Set bounds for the e_ij: binary if !rational
-    for (i = 0; i < flex_prob->num_services; i++) {
-        for (j = 0; j < flex_prob->num_servers; j++) {
-            if (rational) {
-                glp_set_col_kind(prob, LP_E_IJ_COL, GLP_CV);
-            } else {
-                glp_set_col_kind(prob, LP_E_IJ_COL, GLP_BV);
-            }
-            glp_set_col_bnds(prob, LP_E_IJ_COL, GLP_DB, 0.0, 1.0);
-            glp_set_col_bnds(prob, LP_Y_IJ_COL, GLP_DB, 0.0, 1.0);
-        }
-    }
-
-    glp_set_row_bnds(prob, row, GLP_FX, 1.0, 1.0);
-    // upper bound 0...
-    glp_set_row_bnds(prob, row, GLP_UP, LP_IGNORE, 0.0);
-    // lower bound 0...
-    glp_set_row_bnds(prob, row, GLP_UP, LP_IGNORE, 0.0);
-
-    // load matrix...
-    glp_load_matrix(prob, LP_NUM_ELTS, ia, ja, ra);
-
-}
-flexsched_solution_t LPBOUND_scheduler(char *name, char **options)
-{
-    flexsched_solution flex_soln = new_flexsched_solution();
+    flexsched_solution flex_soln = new_flexsched_solutionl(flex_prob);
+    linear_program_t lp = create_placement_lp(flex_prob, RATIONAL);
     double objval;
 
-// create and solve LP, get objective value
-#ifdef CPLEX
-    CPXENVptr env;
-    CPXLPptr lp;
-    create_placement_lp(RATIONAL, &env, &lp);
-    if (solve_linear_program(env, lp, RATIONAL)) return flex_soln;
-    CPXgetobjval(env, lp, &objval);
-#else
-    glp_prob *prob = create_placement_lp(RATIONAL);
-    if (solve_linear_program(prob, RATIONAL)) return flex_soln;
-    objval = glp_get_col_prim(prob, LP_OBJ_COL);
-#endif
+    if (solve_linear_program(lp, RATIONAL)) return flex_soln;
+    objval = get_obj_val(lp);
 
     if (fabs(flex_prob->lpbound - objval) > EPSILON)
     {
         fprintf(stderr,"Error: Immediate bound = %.3f, LP bound = %.3f\n", 
             flex_prob->lpbound, objval);
         exit(1);
-#ifdef DEBUG
-    } else {
-        fprintf(stderr,"AGREEMENT\n");
-#endif
     }
 
     flex_soln->success = 1;
     return flex_soln;
 }
 
-flexsched_solution MILP_scheduler(char *name, char **options)
+flexsched_solution MILP_scheduler(
+    flexsched_problem_t flex_prob, char *name, char **options)
 {
     int i, j;
     int status;
     double val;
-    flexsched_solution flex_soln = new_flexsched_solution();
+    flexsched_solution flex_soln = new_flexsched_solution(flex_prob);
+    linear_program_t lp = create_placement_lp(flex_prob, INTEGER);
 
-#ifdef CPLEX
-    CPXENVptr env;
-    CPXLPptr lp;
+    status = solve_linear_program(lp, INTEGER);
 
-    create_placement_lp(INTEGER, &env, &lp);
-
-    if (status = solve_linear_program(env, lp, INTEGER)) {
-        return flex_soln;
+    if (status == 2) {
+        strcat(flex_soln->misc_output, "T");
     }
-#else
-    glp_prob *prob = create_placement_lp(INTEGER);
 
-    if (status = solve_linear_program(prob, INTEGER)) {
-        if (status == 2) {
-            strcat(flex_soln->misc_output, "T");
-        }
-        return flex_soln;
-    }
-#endif
+    if (status) return flex_soln;
+
+    flex_soln->success = 1;
 
     // Retrieve the mapping
     for (i = 0; i < flex_prob->num_services; i++) {
         for (j = 0; j < flex_prob->num_servers; j++) {
-#ifdef CPLEX
-            CPXgetx(env, lp, &val, LP_E_IJ_COL, LP_E_IJ_COL);
-#else
-            val = glp_mip_col_val(prob, LP_E_IJ_COL);
-#endif
-            if (val >= 1.0 - EPSILON) {
+            if(get_mip_col_val(lp, PLACEMENT_LP_COL_E_IJ)) {
                 flex_soln->mapping[i] = j;
-#ifdef CPLEX
-            CPXgetx(env, lp, &val, LP_Y_IJ_COL, LP_Y_IJ_COL);
-#else
-            val = glp_mip_col_val(prob, LP_Y_IJ_COL);
-#endif
-                flex_soln->scaled_yields[i] = 
-                    (val - flex_prob->slas[i]) / (1 - flex_prob->slas[i]);
+                flex_soln->yields[i] = get_col_val(lp, PLACEMENT_LP_COL_Y_IJ);
                 break;
             }
         }
     }
 
-    flex_soln->success = 1;
     return flex_soln;
 }
 
@@ -427,13 +192,11 @@ flexsched_solution MILP_scheduler(char *name, char **options)
  *      - RRND: LPROUNDING(0.0)
  *      - RRNZ: LPROUNDING(xxx)
  */
-// FIXME: why do we need to call the optimizer or get fluid resource overload?
 void LPROUNDING_solver(flexsched_solution flex_soln, float min_weight)
 {
     int i, j;
     float weights[flex_prob->num_servers];
     float x, total_weight, select_over_weight;
-    double val;
     int feasible_servers[flex_prob->num_servers];
     float yields[flex_prob->num_servers];
     int num_feasible_servers;
@@ -441,15 +204,9 @@ void LPROUNDING_solver(flexsched_solution flex_soln, float min_weight)
     // Create the placement problem in rational mode
     // and solve it to compute rational mappings,
     // adding an epsilon to zero values
-#ifdef CPLEX
-    CPXENVptr env;
-    CPXLPptr lp;
-    create_placement_lp(RATIONAL, &env, &lp);
-    if (solve_linear_program(env, lp, INTEGER)) return;
-#else
-    glp_prob *prob = create_placement_lp(RATIONAL);
-    if (solve_linear_program(prob, RATIONAL)) return;
-#endif
+    linear_program_t lp = create_placement_lp(flex_soln->prob, RATIONAL);
+
+    if (solve_linear_program(lp, RATIONAL)) return;
 
     srand(RANDOM_SEED);
     initialize_global_server_loads();
@@ -459,21 +216,12 @@ void LPROUNDING_solver(flexsched_solution flex_soln, float min_weight)
         total_weight = 0.0;
         num_feasible_servers = 0;
         for (j = 0; j < flex_prob->num_servers; j++) {
-#ifdef CPLEX
-            CPXgetx(env, lp, &val, LP_E_IJ_COL, LP_E_IJ_COL);
-#else
-            val = glp_get_col_prim(prob, LP_E_IJ_COL);
-#endif
-            x = MAX(val, min_weight);
+            x = MAX(get_col_val(lp, PLACEMENT_LP_COL_E_IJ), min_weight);
             if (service_can_fit_on_server_fast(i, j) && x > 0.0) {
                 feasible_servers[num_feasible_servers] = j;
                 weights[num_feasible_servers] = x;
-#ifdef CPLEX
-                CPXgetx(env, lp, &val, LP_Y_IJ_COL, LP_Y_IJ_COL);
-#else
-                val = glp_get_col_prim(prob, LP_Y_IJ_COL);
-#endif
-                yields[num_feasible_servers] = val;
+                yields[num_feasible_servers] = 
+                    get_col_val(lp, PLACEMENT_LP_COL_Y_IJ);
                 total_weight += x;
                 num_feasible_servers++;
             }
@@ -495,21 +243,19 @@ void LPROUNDING_solver(flexsched_solution flex_soln, float min_weight)
 
         // set the mappings appropriately
         flex_soln->mapping[i] = feasible_servers[j];
-        flex_soln->scaled_yields[i] = yields[j];
+        flex_soln->yields[i] = yields[j];
         add_service_load_to_server(i, feasible_servers[j]);
-
     }
 
     free_global_server_loads();
     flex_soln->success = 1;
-    // otherwise rounding gives bad values...
-    // FIXME: seems like it *should* work without this...
-    maximize_minimum_then_average_yield(flex_soln);
     return;
 }
 
-flexsched_solution LPROUNDING_scheduler(char *name, char **options) {
-    flexsched_solution flex_soln = new_flexsched_solution();
+flexsched_solution LPROUNDING_scheduler(
+    flexsched_problem_t flex_prob, char *name, char **options) 
+{
+    flexsched_solution flex_soln = new_flexsched_solution(flex_prob);
 
     if (!strcmp(name, "RRND")) {
         LPROUNDING_solver(flex_soln, 0.0);
@@ -522,71 +268,36 @@ flexsched_solution LPROUNDING_scheduler(char *name, char **options) {
     return flex_soln;
 }
 
+#if 0
+
 #define ALLOC_LP_NUM_COLS (flex_prob->num_services+1)
+#define ALLOC_LP_Y_I_COL i
+#define ALLOC_LP_OBJ_COL (flex_prob->num_services)
+
 #define ALLOC_LP_NUM_ROWS (flex_prob->num_servers*flex_prob->num_fluid+1)
 #define ALLOC_LP_NUM_ELTS ((flex_prob->num_fluid+1)*flex_prob->num_services+1)
 
-#ifdef CPLEX
-// CPLEX uses 0 index cols/rows
-#define ALLOC_LP_Y_I_COL i
-#define ALLOC_LP_OBJ_COL (flex_prob->num_services)
 #define ALLOC_LP_ROW_JK (flex_prob->num_fluid*j+k)
 #define ALLOC_LP_OBJ_ROW (flex_prob->num_servers*flex_prob->num_fluid)
 
-int create_allocation_lp(flexsched_solution flex_soln, float minyield, 
-    CPXENVptr *retenv, CPXLPptr *retlp) 
+linear_program_t create_allocation_lp(
+    flexsched_solution flex_soln, float minyield)
 {
-    CPXENVptr env = NULL;
-    CPXLPptr lp = NULL;
-    int status = 0;
+    int ia[ALLOC_LP_NUM_ELTS];
+    int ja[ALLOC_LP_NUM_ELTS];
+    double ra[ALLOC_LP_NUM_ELTS];
+
     int i, j, k;
-    double obj, bound, range;
-    char type = CPX_CONTINUOUS;
-    int elt;
-    int ia[ALLOC_LP_NUM_ELTS+1];
-    int ja[ALLOC_LP_NUM_ELTS+1];
-    double ra[ALLOC_LP_NUM_ELTS+1];
-    double rowmin;
+    int row, elt;
 
-    *retenv = NULL;
-    *retlp = NULL; 
-
-    // create CPLEX problem
-    env = CPXopenCPLEX (&status);
-    if (NULL == env) {
-        fprintf (stderr, "Could not open CPLEX environment.\n");
-        return 1;
-    }
-  
-#ifdef DEBUG
-    // turn on output
-    status = CPXsetintparam(env, CPX_PARAM_SCRIND, CPX_ON);
-    if ( status ) {
-        fprintf (stderr,
-                 "Failure to turn on screen indicator, error %d.\n", status);
-        return 1;
-    }
-    // Turn on data checking
-    status = CPXsetintparam(env, CPX_PARAM_DATACHECK, CPX_ON);
-    if ( status ) {
-        fprintf (stderr, 
-            "Failure to turn on data checking, error %d.\n", status);
-        return 1; 
-    }
-#endif
-
-    // create the problem
-    lp = CPXcreateprob(env, &status, "task allocation problem");
-
-    if ( lp == NULL ) {
-        fprintf (stderr, "Failed to create LP.\n");
-        return 1;
-    }  
+    linear_program_t lp = new_linear_program(ALLOC_LP_NUM_COLS, 
+        ALLOC_LP_NUM_ROWS);
 
     // set fluid capacity constraints...
     type = 'L';
     for (j = 0; j < flex_prob->num_servers; j++) {
         for (k = 0; k < flex_prob->num_fluid; k++) {
+            set_row_params(lp, row, LP_IGNORE, flex_soln->prob)
             // not totally happy about the EPSILON, but it seems necessary to
             // keep everything within bounds
             bound = flex_prob->fluid_capacities[j][k] - EPSILON;
@@ -644,13 +355,6 @@ int create_allocation_lp(flexsched_solution flex_soln, float minyield,
     return 0;
 }
 
-#else
-
-#define ALLOC_LP_Y_I_COL (i+1)
-#define ALLOC_LP_OBJ_COL (flex_prob->num_services+1)
-#define ALLOC_LP_ROW_JK (flex_prob->num_fluid*j+k+1)
-#define ALLOC_LP_OBJ_ROW (flex_prob->num_servers*flex_prob->num_fluid+1)
-
 glp_prob *create_allocation_lp(flexsched_solution flex_soln, float minyield) 
 {
     glp_prob *prob;
@@ -667,11 +371,6 @@ glp_prob *create_allocation_lp(flexsched_solution flex_soln, float minyield)
     glp_add_cols(prob, ALLOC_LP_NUM_COLS);
     glp_add_rows(prob, ALLOC_LP_NUM_ROWS);
 
-#ifdef DEBUG
-    glp_set_prob_name(prob, "task allocation problem");
-    glp_set_obj_name(prob, "average yield");
-#endif
-
     // set fluid capacity constraints...
     for (j = 0; j < flex_prob->num_servers; j++) {
         for (k = 0; k < flex_prob->num_fluid; k++) {
@@ -687,11 +386,6 @@ glp_prob *create_allocation_lp(flexsched_solution flex_soln, float minyield)
     // fill in variables
     // for all j,k sum_i (for i mapped to j) need_ik * y_i <= capacity_jk
     for (i = 0; i < flex_prob->num_services; i++) {
-#ifdef DEBUG
-        char buffer[10];
-        sprintf(buffer, "y_{%d}", i);
-        glp_set_col_name(prob, ALLOC_LP_Y_I_COL, buffer);
-#endif
         glp_set_col_kind(prob, ALLOC_LP_Y_I_COL, GLP_CV);
         glp_set_col_bnds(prob, ALLOC_LP_Y_I_COL, GLP_DB, 
             flex_prob->slas[i] + minyield * (1.0 - flex_prob->slas[i]), 1.0);
@@ -726,40 +420,20 @@ glp_prob *create_allocation_lp(flexsched_solution flex_soln, float minyield)
     return prob;
 
 }
+
 #endif
 
 void maximize_average_yield_given_minimum(
     flexsched_solution flex_soln, float minyield)
 {
+#if 0
     int i;
     double val;
-
-#ifdef CPLEX
-    CPXENVptr env;
-    CPXLPptr lp;
-    create_allocation_lp(flex_soln, minyield, &env, &lp);
-    if (solve_linear_program(env, lp, RATIONAL)) return;
-#else
-    glp_prob *prob = create_allocation_lp(flex_soln, minyield);
-    if (solve_linear_program(prob, RATIONAL)) return;
-#endif
+    linear_program_t lp = create_allocation_lp(flex_soln, minyield);
 
     for (i = 0; i < flex_prob->num_services; i++) {
-#ifdef CPLEX
-        CPXgetx(env, lp, &val, ALLOC_LP_Y_I_COL, ALLOC_LP_Y_I_COL);
-#else
-        val = glp_get_col_prim(prob, ALLOC_LP_Y_I_COL);
-#endif
-        flex_soln->scaled_yields[i] = val;
+        flex_soln->yields[i] = get_col_val(lp, ALLOC_LP_COL_Y_I);
     }
-
-#ifdef CPLEX
-    // FIXME: how to delete cplex lp?
-#else
-    glp_erase_prob(prob);
-    glp_delete_prob(prob);
-    glp_free_env();
 #endif
-
     return;
 }
