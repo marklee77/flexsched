@@ -137,6 +137,14 @@ int unit_allocation_at_yield_within_capacity(
     return 1;
 }
 
+// not really necessary...
+void put_service_on_server(
+    flexsched_solution_t flex_soln, int service, int server) 
+{
+    flex_soln->mapping[service] = server;
+    return;
+}
+
 float compute_available_resource(flexsched_solution_t flex_soln, int server, 
     int dim)
 {
@@ -230,7 +238,7 @@ void free_global_resource_availabilities_and_loads(
     return;
 }
 
-void put_service_on_server(
+void put_service_on_server_fast(
     flexsched_solution_t flex_soln, int service, int server) 
 {
     int i;

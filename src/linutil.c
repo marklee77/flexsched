@@ -1,3 +1,4 @@
+#include "flexsched.h"
 #include "linearprog.h"
 
 #ifdef CPLEX
@@ -62,7 +63,7 @@ void set_row_params(
     return;
 }
 
-void load_matrix(linear_program_t lp, int elts, int ia[], int ja[], float ra[])
+void load_matrix(linear_program_t lp, int elts, int ia[], int ja[], double ra[])
 {
     CPXchgcoeflist(lp->env, lp->lp, elts, ia, ja, ra);
     return;
@@ -140,17 +141,17 @@ void set_row_params(
     } else if (lb == ub) {
         type = GLP_FX;
     } else {
-        type = GLP_DB
+        type = GLP_DB;
     }
     glp_set_row_bnds(lp, row+1, type, lb, ub);
     return;
 }
 
-void load_matrix(linear_program_t lp, int elts, int ia[], int ja[], float ra[])
+void load_matrix(linear_program_t lp, int elts, int ia[], int ja[], double ra[])
 {
     int i;
     int ib[elts+1], jb[elts+1];
-    float rb[elts+1];
+    double rb[elts+1];
     for (i = 0; i < elts; i++) {
         ib[i+1] = ia[i]+1;
         jb[i+1] = ja[i]+1;
@@ -173,15 +174,15 @@ int solve_linear_program(linear_program_t lp, int rational)
     glp_term_hook(&glp_stderr_null_out, NULL);
 
     if (rational) {
-        solver_status = glp_simplex(prob, NULL);
-        solution_status = (glp_get_status(prob) != GLP_OPT);
+        solver_status = glp_simplex(lp, NULL);
+        solution_status = (glp_get_status(lp) != GLP_OPT);
     } else {
         glp_iocp parm;
         glp_init_iocp(&parm);
         parm.presolve = GLP_ON;
         parm.tm_lim = GLPK_TIME_LIMIT;
-        solver_status = glp_intopt(prob, &parm);
-        solution_status = (glp_mip_status(prob) != GLP_OPT);
+        solver_status = glp_intopt(lp, &parm);
+        solution_status = (glp_mip_status(lp) != GLP_OPT);
     }
 
     // Reached the time limit

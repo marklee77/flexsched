@@ -27,7 +27,8 @@ void free_linear_program(linear_program_t lp);
 void set_col_params(linear_program_t lp, int col, 
     int rational, double lb, double ub, double obj);
 void set_row_params(linear_program_t lp, int row, double lb, double ub);
-void load_matrix(linear_program_t lp, int elts, int ia[], int ja[], float ra[]);
+void load_matrix(linear_program_t lp, int elts, 
+    int ia[], int ja[], double ra[]);
 int solve_linear_program(linear_program_t lp, int rational);
 double get_obj_val(linear_program_t lp);
 int get_mip_col_val(linear_program_t lp, int col);

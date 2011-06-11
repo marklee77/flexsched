@@ -72,10 +72,14 @@ typedef struct flexsched_solution_s {
 /* utility function prototypes */
 flexsched_solution_t new_flexsched_solution(flexsched_problem_t);
 void free_flexsched_solution(flexsched_solution_t);
-void put_service_on_server(flexsched_solution_t, int, int);
+
+int service_can_fit_on_server(flexsched_solution_t, int, int);
 
 void initialize_global_resource_availabilities_and_loads(flexsched_problem_t);
 void free_global_resource_availabilities_and_loads(flexsched_problem_t);
+void put_service_on_server(flexsched_solution_t, int, int);
+int service_can_fit_on_server_fast(flexsched_solution_t, int, int);
+
 
 float compute_minimum_yield(flexsched_solution_t);
 float compute_average_yield(flexsched_solution_t);

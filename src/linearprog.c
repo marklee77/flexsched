@@ -1,3 +1,4 @@
+#include "flexsched.h"
 #include "linearprog.h"
 
 // Number of variables (called "columns"): 
@@ -7,11 +8,11 @@
 #define PLACEMENT_LP_NUM_COLS \
     (2*(flex_prob->num_services)*(flex_prob->num_servers)+1)
 
-#define PLACEMENT_LP_E_IJ_COL \
+#define PLACEMENT_LP_COL_E_IJ \
     ((flex_prob->num_servers)*i+j)
-#define PLACEMENT_LP_Y_IJ_COL \
+#define PLACEMENT_LP_COL_Y_IJ \
     ((flex_prob->num_servers)*((flex_prob->num_services)+i)+j)
-#define PLACEMENT_LP_OBJ_COL  \
+#define PLACEMENT_LP_COL_OBJ \
     (2*(flex_prob->num_services)*(flex_prob->num_servers))
 
 // Number of rows  
@@ -77,10 +78,10 @@ linear_program_t create_placement_lp(
         set_row_params(lp, row, 0.0, LP_IGNORE);
         for (j = 0; j < flex_prob->num_servers; j++) {
             ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_Y_IJ; 
-            ra[elt] = -1.0; elt++;
+            ra[elt] = 1.0; elt++;
         }
-        ia[elt] = row; ja[elt] = PLACEMENT_LP_OBJ_COL;
-        ra[elt] = flex_prob->slas[i] 1.0;
+        ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_OBJ;
+        ra[elt] = -1.0;
         elt++; row++;
     }
 
@@ -101,7 +102,7 @@ linear_program_t create_placement_lp(
         for (j = 0; j < flex_prob->num_servers; j++) {
             for (k = 0; k < flex_prob->num_resources; k++) {
                 set_row_params(lp, row, LP_IGNORE, 
-                    flex_prob->servers[j]->unit_capacities[k])
+                    flex_prob->servers[j]->unit_capacities[k]);
                 ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_E_IJ; 
                 ra[elt] = flex_prob->services[i]->unit_rigid_requirements[k]; 
                 elt++;
@@ -116,7 +117,7 @@ linear_program_t create_placement_lp(
     for (j = 0; j < flex_prob->num_servers; j++) {
         for (k = 0; k < flex_prob->num_resources; k++) {
             set_row_params(lp, row, LP_IGNORE, 
-                flex_prob->servers[j]->total_capacities[k])
+                flex_prob->servers[j]->total_capacities[k]);
             for (i = 0; i < flex_prob->num_services; i++) {
                 ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_E_IJ; 
                 ra[elt] = flex_prob->services[i]->total_rigid_requirements[k]; 
@@ -137,32 +138,28 @@ linear_program_t create_placement_lp(
 flexsched_solution_t LPBOUND_scheduler(
     flexsched_problem_t flex_prob, char *name, char **options)
 {
-    flexsched_solution flex_soln = new_flexsched_solutionl(flex_prob);
+    flexsched_solution_t flex_soln = new_flexsched_solution(flex_prob);
     linear_program_t lp = create_placement_lp(flex_prob, RATIONAL);
     double objval;
+    int i;
 
     if (solve_linear_program(lp, RATIONAL)) return flex_soln;
-    objval = get_obj_val(lp);
-
-    if (fabs(flex_prob->lpbound - objval) > EPSILON)
-    {
-        fprintf(stderr,"Error: Immediate bound = %.3f, LP bound = %.3f\n", 
-            flex_prob->lpbound, objval);
-        exit(1);
-    }
-
     flex_soln->success = 1;
+    objval = get_obj_val(lp);
+    for (i = 0; i < flex_prob->num_services; i++) {
+        flex_soln->yields[i] = objval;
+    }
     return flex_soln;
 }
 
-flexsched_solution MILP_scheduler(
+flexsched_solution_t MILP_scheduler(
     flexsched_problem_t flex_prob, char *name, char **options)
 {
+    flexsched_solution_t flex_soln = new_flexsched_solution(flex_prob);
+    linear_program_t lp = create_placement_lp(flex_prob, INTEGER);
     int i, j;
     int status;
     double val;
-    flexsched_solution flex_soln = new_flexsched_solution(flex_prob);
-    linear_program_t lp = create_placement_lp(flex_prob, INTEGER);
 
     status = solve_linear_program(lp, INTEGER);
 
@@ -192,8 +189,10 @@ flexsched_solution MILP_scheduler(
  *      - RRND: LPROUNDING(0.0)
  *      - RRNZ: LPROUNDING(xxx)
  */
-void LPROUNDING_solver(flexsched_solution flex_soln, float min_weight)
+flexsched_solution_t LPROUNDING_solver(
+    flexsched_problem_t flex_prob, float min_weight)
 {
+    flexsched_solution_t flex_soln = new_flexsched_solution(flex_prob);
     int i, j;
     float weights[flex_prob->num_servers];
     float x, total_weight, select_over_weight;
@@ -204,12 +203,12 @@ void LPROUNDING_solver(flexsched_solution flex_soln, float min_weight)
     // Create the placement problem in rational mode
     // and solve it to compute rational mappings,
     // adding an epsilon to zero values
-    linear_program_t lp = create_placement_lp(flex_soln->prob, RATIONAL);
+    linear_program_t lp = create_placement_lp(flex_prob, RATIONAL);
 
     if (solve_linear_program(lp, RATIONAL)) return;
 
     srand(RANDOM_SEED);
-    initialize_global_server_loads();
+    initialize_global_resource_availabilities_and_loads(flex_prob);
 
     // For each service, pick on which server it lands
     for (i = 0; i < flex_prob->num_services; i++) {
@@ -217,7 +216,7 @@ void LPROUNDING_solver(flexsched_solution flex_soln, float min_weight)
         num_feasible_servers = 0;
         for (j = 0; j < flex_prob->num_servers; j++) {
             x = MAX(get_col_val(lp, PLACEMENT_LP_COL_E_IJ), min_weight);
-            if (service_can_fit_on_server_fast(i, j) && x > 0.0) {
+            if (service_can_fit_on_server_fast(flex_soln, i, j) && x > 0.0) {
                 feasible_servers[num_feasible_servers] = j;
                 weights[num_feasible_servers] = x;
                 yields[num_feasible_servers] = 
@@ -242,27 +241,27 @@ void LPROUNDING_solver(flexsched_solution flex_soln, float min_weight)
         if (j >= num_feasible_servers) return;
 
         // set the mappings appropriately
-        flex_soln->mapping[i] = feasible_servers[j];
+        put_service_on_server_fast(flex_soln, i, feasible_servers[j]);
         flex_soln->yields[i] = yields[j];
-        add_service_load_to_server(i, feasible_servers[j]);
     }
 
-    free_global_server_loads();
+    free_global_resource_availabilities_and_loads(flex_prob);
     flex_soln->success = 1;
     return;
 }
 
-flexsched_solution LPROUNDING_scheduler(
+flexsched_solution_t LPROUNDING_scheduler(
     flexsched_problem_t flex_prob, char *name, char **options) 
 {
-    flexsched_solution flex_soln = new_flexsched_solution(flex_prob);
+    flexsched_solution_t flex_soln = NULL;
 
     if (!strcmp(name, "RRND")) {
-        LPROUNDING_solver(flex_soln, 0.0);
+        flex_soln = LPROUNDING_solver(flex_prob, 0.0);
     } else if (!strcmp(name, "RRNZ")) {
-        LPROUNDING_solver(flex_soln, 0.01);
+        flex_soln = LPROUNDING_solver(flex_prob, 0.01);
     } else {
         fprintf(stderr, "LPROUNDING scheduler doesn't recognize %s!\n", name);
+        flex_soln = new_flexsched_solution(flex_prob);
     }
 
     return flex_soln;
@@ -424,7 +423,7 @@ glp_prob *create_allocation_lp(flexsched_solution flex_soln, float minyield)
 #endif
 
 void maximize_average_yield_given_minimum(
-    flexsched_solution flex_soln, float minyield)
+    flexsched_solution_t flex_soln, float minyield)
 {
 #if 0
     int i;
