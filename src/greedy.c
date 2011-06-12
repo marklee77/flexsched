@@ -17,9 +17,9 @@ QSORT_CMP_FUNC_DECL(cmp_greedy_S2)
     int x = *(int *)xvp, y = *(int *)yvp;
 
     // y is first to make it DECREASING
-    return CMP(float_array_max(flex_prob->services[y]->total_fluid_needs, 
+    return CMP(double_array_max(flex_prob->services[y]->total_fluid_needs, 
         flex_prob->num_resources),
-        float_array_max(flex_prob->services[x]->total_fluid_needs,
+        double_array_max(flex_prob->services[x]->total_fluid_needs,
             flex_prob->num_resources));
 }
 
@@ -30,9 +30,9 @@ int cmp_greedy_S3(void *qsort_thunk_vp, const void *xvp, const void *yvp)
     int x = *(int *)xvp, y = *(int *)yvp;
 
     // y is first to make it DECREASING
-    return CMP(float_array_sum(flex_prob->services[y]->total_fluid_needs,
+    return CMP(double_array_sum(flex_prob->services[y]->total_fluid_needs,
         flex_prob->num_resources),
-        float_array_sum(flex_prob->services[x]->total_fluid_needs,
+        double_array_sum(flex_prob->services[x]->total_fluid_needs,
             flex_prob->num_resources));
 }
 
@@ -44,9 +44,9 @@ int cmp_greedy_S4(void *qsort_thunk_vp, const void *xvp, const void *yvp)
 
     // y is first to make it DECREASING
     return CMP(
-        float_array_max(flex_prob->services[y]->total_rigid_requirements,
+        double_array_max(flex_prob->services[y]->total_rigid_requirements,
             flex_prob->num_resources),
-        float_array_max(flex_prob->services[x]->total_rigid_requirements,
+        double_array_max(flex_prob->services[x]->total_rigid_requirements,
             flex_prob->num_resources));
 }
 
@@ -58,9 +58,9 @@ int cmp_greedy_S5(void *qsort_thunk_vp, const void *xvp, const void *yvp)
 
     // y is first to make it DECREASING
     return CMP(
-        float_array_sum(flex_prob->services[y]->total_rigid_requirements,
+        double_array_sum(flex_prob->services[y]->total_rigid_requirements,
             flex_prob->num_resources),
-        float_array_sum(flex_prob->services[x]->total_rigid_requirements,
+        double_array_sum(flex_prob->services[x]->total_rigid_requirements,
             flex_prob->num_resources));
 }
 
@@ -69,8 +69,8 @@ int cmp_greedy_S6(void *qsort_thunk_vp, const void *xvp, const void *yvp)
 {
     flexsched_problem_t flex_prob = (flexsched_problem_t)qsort_thunk_vp;
     int x = *(int *)xvp, y = *(int *)yvp;
-    float xload[flex_prob->num_resources];
-    float yload[flex_prob->num_resources];
+    double xload[flex_prob->num_resources];
+    double yload[flex_prob->num_resources];
     int i;
 
     for (i = 0; i < flex_prob->num_resources; i++) {
@@ -80,8 +80,8 @@ int cmp_greedy_S6(void *qsort_thunk_vp, const void *xvp, const void *yvp)
             flex_prob->services[y]->total_fluid_needs[i];
     }
 
-    return CMP(float_array_max(yload, flex_prob->num_resources), 
-        float_array_max(xload, flex_prob->num_resources));
+    return CMP(double_array_max(yload, flex_prob->num_resources), 
+        double_array_max(xload, flex_prob->num_resources));
 }
 
 /* Sorting the services by decreasing sum of all requirements and needs */
@@ -90,13 +90,13 @@ int cmp_greedy_S7(void *qsort_thunk_vp, const void *xvp, const void *yvp)
     flexsched_problem_t flex_prob = (flexsched_problem_t)qsort_thunk_vp;
     int x = *(int *)xvp, y = *(int *)yvp;
 
-    return CMP(float_array_sum(flex_prob->services[y]->total_rigid_requirements,
+    return CMP(double_array_sum(flex_prob->services[y]->total_rigid_requirements,
         flex_prob->num_resources) + 
-        float_array_sum(flex_prob->services[y]->total_fluid_needs, 
+        double_array_sum(flex_prob->services[y]->total_fluid_needs, 
             flex_prob->num_resources),
-        float_array_sum(flex_prob->services[x]->total_rigid_requirements, 
+        double_array_sum(flex_prob->services[x]->total_rigid_requirements, 
             flex_prob->num_resources) + 
-        float_array_sum(flex_prob->services[x]->total_fluid_needs, 
+        double_array_sum(flex_prob->services[x]->total_fluid_needs, 
             flex_prob->num_resources));
 }
 
@@ -119,10 +119,10 @@ void GREEDY_sort_services(int *sortmap, flexsched_problem_t flex_prob,
 int GREEDY_pick_server_P1(flexsched_solution_t flex_soln, int service)
 {
     int i;
-    int dim = float_array_argmax(
+    int dim = double_array_argmax(
         flex_soln->prob->services[service]->total_fluid_needs, 
         flex_soln->prob->num_resources);
-    float available_resource, max_available_resource = 0.0;
+    double available_resource, max_available_resource = 0.0;
     int picked = -1;
     for (i = 0; i < flex_soln->prob->num_servers; i++) {
         if (!service_can_fit_on_server_fast(flex_soln, service, i)) continue;
@@ -140,8 +140,8 @@ int GREEDY_pick_server_P1(flexsched_solution_t flex_soln, int service)
 int GREEDY_pick_server_P2(flexsched_solution_t flex_soln, int service)
 {
     int i, j;
-    float sumload, sumresource;
-    float ratio, minratio = -1.0;
+    double sumload, sumresource;
+    double ratio, minratio = -1.0;
     int picked;
   
     picked = -1;
@@ -167,7 +167,7 @@ int GREEDY_pick_server_P2(flexsched_solution_t flex_soln, int service)
 
     if (picked > -1 && minratio < 0.0) {
         fprintf(stderr, "Error: something went wrong in P2.\n");
-        exit(1);
+        //exit(1);
     }
 
     return picked;
@@ -179,10 +179,10 @@ int GREEDY_pick_server_P3_P5(
     flexsched_solution_t flex_soln, int service, int mode)
 {
     int i, picked;
-    int dim = float_array_argmax(
+    int dim = double_array_argmax(
         flex_soln->prob->services[service]->total_rigid_requirements, 
             flex_soln->prob->num_resources);
-    float available_resource, obj_available_resource = -1.0;
+    double available_resource, obj_available_resource = -1.0;
 
     picked = -1;
     for (i = 0; i < flex_soln->prob->num_servers; i++) {
@@ -218,7 +218,7 @@ int GREEDY_pick_server_P4_P6(
     flexsched_solution_t flex_soln, int service, int mode)
 {
     int i, j, picked;
-    float sumresource, obj_sumresource = -1.0;
+    double sumresource, obj_sumresource = -1.0;
 
     picked = -1;
 
@@ -379,8 +379,8 @@ flexsched_solution_t METAGREEDY_scheduler(
     int i, is, ip;
 
     flexsched_solution_t curr_soln = NULL;
-    float minyield, maxminyield = -1;
-    float avgyield, maxavgyield = -1;
+    double minyield, maxminyield = -1;
+    double avgyield, maxavgyield = -1;
 
     for (is = 0; sorting[is]; is++) {
         for (ip = 0; picking[ip]; ip++) {
@@ -432,8 +432,8 @@ flexsched_solution_t METAGREEDYLIGHT_scheduler(
     int i, isp;
 
     flexsched_solution_t curr_soln = NULL;
-    float minyield, maxminyield = -1;
-    float avgyield, maxavgyield = -1;
+    double minyield, maxminyield = -1;
+    double avgyield, maxavgyield = -1;
 
     for (isp = 0; sorting[isp] && picking[isp]; isp++) {
 

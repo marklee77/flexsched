@@ -10,7 +10,7 @@
 /****************************/
 /**** PARAMETER CONSTANTS ***/
 /****************************/
-#define EPSILON 0.000001
+#define EPSILON 0.00001
 #define RANDOM_SEED 6337
 
 #define BEST_FIT 1
@@ -38,15 +38,15 @@
 /*************************************/
 
 typedef struct server_s {
-    float *unit_capacities;
-    float *total_capacities;
+    double *unit_capacities;
+    double *total_capacities;
 } *server_t;
 
 typedef struct service_s {
-    float *unit_rigid_requirements;
-    float *unit_fluid_needs;
-    float *total_rigid_requirements;
-    float *total_fluid_needs;
+    double *unit_rigid_requirements;
+    double *unit_fluid_needs;
+    double *total_rigid_requirements;
+    double *total_fluid_needs;
 } *service_t;
 
 typedef struct flexsched_problem_s {
@@ -61,7 +61,7 @@ typedef struct flexsched_solution_s {
     flexsched_problem_t prob;
     int success;
     int *mapping;
-    float *yields;
+    double *yields;
     char misc_output[100];
 } *flexsched_solution_t;
 
@@ -81,14 +81,15 @@ void put_service_on_server(flexsched_solution_t, int, int);
 int service_can_fit_on_server_fast(flexsched_solution_t, int, int);
 
 
-float compute_minimum_yield(flexsched_solution_t);
-float compute_average_yield(flexsched_solution_t);
-float compute_utilization(flexsched_solution_t);
+double compute_available_resource(flexsched_solution_t, int, int);
+double compute_minimum_yield(flexsched_solution_t);
+double compute_average_yield(flexsched_solution_t);
+double compute_utilization(flexsched_solution_t);
 int sanity_check(flexsched_solution_t);
 
 /*
 double compute_LP_bound();
-float array_sum(float *, int);
+double array_sum(float *, int);
 float array_max(float *, int);
 float array_min(float *, int);
 int array_argmax(float *, int);

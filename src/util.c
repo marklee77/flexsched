@@ -3,38 +3,38 @@
 void *qsort_thunk_vp = NULL;
 #endif
 
-float float_array_sum(float *array, int size)
+double double_array_sum(double *array, int size)
 {
     int i;
-    float sum = 0.0;
+    double sum = 0.0;
     for (i = 0; i < size; i++) sum += array[i];
     return sum;
 }
 
 /* array_max(): Utility function */
-float float_array_max(float *array, int size)
+double double_array_max(double *array, int size)
 {
     int i;
-    float max = array[0];
+    double max = array[0];
     for (i = 1; i < size; i++) if (max < array[i]) max = array[i];
     return max;
 }
 
 /* array_min(): Utility function */
-float float_array_min(float *array, int size)
+double double_array_min(double *array, int size)
 {
     int i;
-    float min = array[0];
+    double min = array[0];
     for (i = 1; i < size; i++) if (min > array[i]) min = array[i];
     return min;
 }
 
 /* array_argmax(): Utility function */
-int float_array_argmax(float *array, int size)
+int double_array_argmax(double *array, int size)
 {
     int i;
     int argmax = 0;
-    float max = array[0];
+    double max = array[0];
     for (i = 1; i < size; i++) 
         if (max < array[i]) {
             argmax = i;
@@ -44,11 +44,11 @@ int float_array_argmax(float *array, int size)
 }
 
 /* array_argmax(): Utility function */
-int float_array_argmin(float *array, int size)
+int double_array_argmin(double *array, int size)
 {
     int i;
     int argmin = 0;
-    float min = array[0];
+    double min = array[0];
     for (i = 1; i < size; i++) 
         if (array[i] < min) {
             argmin = i;
@@ -80,7 +80,7 @@ flexsched_solution_t new_flexsched_solution(flexsched_problem_t flex_prob)
         exit(1);
     }
     if (!(flex_soln->yields =
-        (float *)calloc(flex_prob->num_services, sizeof(float)))) {
+        (double *)calloc(flex_prob->num_services, sizeof(double)))) {
         fprintf(stderr, "couldn't allocate sufficient memory for yields!\n");
         exit(1);
     }
@@ -119,15 +119,15 @@ int unit_requirements_within_capacity(
 }
 
 inline int unit_allocation_at_yield_within_capacity_in_dim(flexsched_problem_t 
-    flex_prob, int service, float yield, int server, int dim) 
+    flex_prob, int service, double yield, int server, int dim) 
 {
     return flex_prob->services[service]->unit_rigid_requirements[dim] +
-        yield * flex_prob->services[service]->unit_fluid_needs[dim] + EPSILON 
+        yield * flex_prob->services[service]->unit_fluid_needs[dim]
         <= flex_prob->servers[server]->unit_capacities[dim];
 }
 
 int unit_allocation_at_yield_within_capacity(
-    flexsched_problem_t flex_prob, int service, float yield, int server) 
+    flexsched_problem_t flex_prob, int service, double yield, int server) 
 {
     int i;
     for (i = 0; i < flex_prob->num_resources; i++) {
@@ -145,10 +145,10 @@ void put_service_on_server(
     return;
 }
 
-float compute_available_resource(flexsched_solution_t flex_soln, int server, 
+double compute_available_resource(flexsched_solution_t flex_soln, int server, 
     int dim)
 {
-    float allocated_resource = 0.0;
+    double allocated_resource = 0.0;
     int i;
 
     for (i = 0; i < flex_soln->prob->num_services; i++) {
@@ -161,9 +161,9 @@ float compute_available_resource(flexsched_solution_t flex_soln, int server,
         allocated_resource; 
 }
 
-float compute_fluid_load(flexsched_solution_t flex_soln, int server, int dim)
+double compute_fluid_load(flexsched_solution_t flex_soln, int server, int dim)
 {
-    float fluid_load = 0.0;
+    double fluid_load = 0.0;
     int i;
 
     for (i = 0; i < flex_soln->prob->num_services; i++) {
@@ -195,8 +195,8 @@ int service_can_fit_on_server(
     return 1;
 }
 
-float **global_available_resources;
-float **global_fluid_loads;
+double **global_available_resources;
+double **global_fluid_loads;
 
 void initialize_global_resource_availabilities_and_loads(
     flexsched_problem_t flex_prob) 
@@ -204,15 +204,15 @@ void initialize_global_resource_availabilities_and_loads(
     int i, j;
 
     global_available_resources = 
-        (float **)calloc(flex_prob->num_servers, sizeof(float *));
+        (double **)calloc(flex_prob->num_servers, sizeof(double *));
     global_fluid_loads = 
-        (float **)calloc(flex_prob->num_servers, sizeof(float *));
+        (double **)calloc(flex_prob->num_servers, sizeof(double *));
 
     for (i = 0; i < flex_prob->num_servers; i++) {
         global_available_resources[i] = 
-            (float *)calloc(flex_prob->num_resources, sizeof(float));
+            (double *)calloc(flex_prob->num_resources, sizeof(double));
         global_fluid_loads[i] = 
-            (float *)calloc(flex_prob->num_resources, sizeof(float));
+            (double *)calloc(flex_prob->num_resources, sizeof(double));
         for (j = 0; j < flex_prob->num_resources; j++) {
             global_available_resources[i][j] =
                 flex_prob->servers[i]->total_capacities[j];
@@ -255,13 +255,13 @@ void put_service_on_server_fast(
     return;
 }
 
-inline float compute_available_resource_fast(
+inline double compute_available_resource_fast(
     flexsched_solution_t flex_soln, int server, int dim)
 {
     return global_available_resources[server][dim];
 }
 
-inline float compute_fluid_load_fast(
+inline double compute_fluid_load_fast(
     flexsched_solution_t flex_soln, int server, int dim)
 {
     return global_fluid_loads[server][dim];
@@ -292,8 +292,8 @@ void maximize_minimum_yield_on_server(
     flexsched_solution_t flex_soln, int server)
 {
     int i;
-    float load;
-    float minyield = 1.0;
+    double load;
+    double minyield = 1.0;
 
     for (i = 0; i < flex_soln->prob->num_resources; i++) {
         load = compute_fluid_load(flex_soln, server, i);
@@ -309,15 +309,15 @@ void maximize_minimum_yield_on_server(
     return;
 }
 
-float compute_minimum_yield(flexsched_solution_t flex_soln)
+double compute_minimum_yield(flexsched_solution_t flex_soln)
 {
-    return float_array_min(flex_soln->yields, flex_soln->prob->num_services);
+    return double_array_min(flex_soln->yields, flex_soln->prob->num_services);
 }
 
 void maximize_minimum_yield(flexsched_solution_t flex_soln)
 {
     int i;
-    float minyield;
+    double minyield;
 
     for (i = 0; i < flex_soln->prob->num_servers; i++) {
         maximize_minimum_yield_on_server(flex_soln, i);
@@ -332,39 +332,37 @@ void maximize_minimum_yield(flexsched_solution_t flex_soln)
 
 // FIXME: organizationally I don't know if it makes more sense to put this in
 // or linearprog.c
-void maximize_average_yield_given_minimum(flexsched_solution_t, float);
+void maximize_average_yield_given_minimum(flexsched_solution_t, double);
 
 void maximize_minimum_then_average_yield(flexsched_solution_t flex_soln)
 {
-    float minyield;
+    double minyield;
 
     maximize_minimum_yield(flex_soln);
     minyield = compute_minimum_yield(flex_soln);
-    // FIXME: restore after linear program is working again...
-    //maximize_average_yield_given_minimum(flex_soln, minyield);
-
+    maximize_average_yield_given_minimum(flex_soln, minyield);
     return;
 }
 
-float compute_average_yield(flexsched_solution_t flex_soln)
+double compute_average_yield(flexsched_solution_t flex_soln)
 {
     int i;
-    float sumyield = 0.0;
+    double sumyield = 0.0;
     for (i = 0; i < flex_soln->prob->num_services; i++) {
         sumyield += flex_soln->yields[i];
     }
     return (sumyield / flex_soln->prob->num_services);
 }
 
-float compute_utilization(flexsched_solution_t flex_soln)
+double compute_utilization(flexsched_solution_t flex_soln)
 {
     int i;
-    float total_capacity = 0.0;
-    float total_alloc = 0.0;
+    double total_capacity = 0.0;
+    double total_alloc = 0.0;
 
     for (i = 0; i < flex_soln->prob->num_servers; i++) {
         total_capacity +=
-            float_array_sum(flex_soln->prob->servers[i]->total_capacities,
+            double_array_sum(flex_soln->prob->servers[i]->total_capacities,
                 flex_soln->prob->num_resources);
     }
 
@@ -372,11 +370,11 @@ float compute_utilization(flexsched_solution_t flex_soln)
 
     for (i = 0; i < flex_soln->prob->num_services; i++) {
         total_alloc +=
-            float_array_sum(
+            double_array_sum(
                 flex_soln->prob->services[i]->total_rigid_requirements, 
                 flex_soln->prob->num_resources) + 
             flex_soln->yields[i] * 
-                float_array_sum(flex_soln->prob->services[i]->total_fluid_needs,
+                double_array_sum(flex_soln->prob->services[i]->total_fluid_needs,
                     flex_soln->prob->num_resources);
     }
 
@@ -393,7 +391,7 @@ int sanity_check(flexsched_solution_t flex_soln)
 {
     int i, j, k;
     int retval = 0;
-    float allocated_resources[flex_soln->prob->num_servers][flex_soln->prob->num_resources];
+    double allocated_resources[flex_soln->prob->num_servers][flex_soln->prob->num_resources];
 
     // check that each service is mapped to a server and yields are <= 1.0
     for (i = 0; i < flex_soln->prob->num_services; i++) {
@@ -404,7 +402,7 @@ int sanity_check(flexsched_solution_t flex_soln)
                 flex_soln->mapping[i]);
             retval = 1;
         }
-        if (flex_soln->yields[i] < 0.0 || flex_soln->yields[i] > 1.0) {
+        if (flex_soln->yields[i] < EPSILON || flex_soln->yields[i] > 1.0) {
             fprintf(stderr, "Error: Allocation of service %d is %.2f.\n",
                 i, flex_soln->yields[i]);
             retval = 1;

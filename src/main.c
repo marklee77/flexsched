@@ -118,14 +118,14 @@ server_t new_server(int num_resources) {
         exit(1);
     }
 
-    if (!(server->unit_capacities = (float *)calloc(num_resources,
-                    sizeof(float)))) {
+    if (!(server->unit_capacities = (double *)calloc(num_resources,
+                    sizeof(double)))) {
         fprintf(stderr, "Insufficient memory to allocate server unit capacities!\n");
         exit(1);
     }
 
-    if (!(server->total_capacities = (float *)calloc(num_resources,
-                    sizeof(float)))) {
+    if (!(server->total_capacities = (double *)calloc(num_resources,
+                    sizeof(double)))) {
         fprintf(stderr, "Insufficient memory to allocate server total capacities!\n");
         exit(1);
     }
@@ -142,26 +142,26 @@ service_t new_service(int num_resources) {
         exit(1);
     }
 
-    if (!(service->unit_rigid_requirements = (float *)calloc(num_resources,
-                    sizeof(float)))) {
+    if (!(service->unit_rigid_requirements = (double *)calloc(num_resources,
+                    sizeof(double)))) {
         fprintf(stderr, "Insufficient memory to allocate service unit rigid_requirements!\n");
         exit(1);
     }
 
-    if (!(service->unit_fluid_needs = (float *)calloc(num_resources,
-                    sizeof(float)))) {
+    if (!(service->unit_fluid_needs = (double *)calloc(num_resources,
+                    sizeof(double)))) {
         fprintf(stderr, "Insufficient memory to allocate service unit fluid_needs!\n");
         exit(1);
     }
 
-    if (!(service->total_rigid_requirements = (float *)calloc(num_resources,
-                    sizeof(float)))) {
+    if (!(service->total_rigid_requirements = (double *)calloc(num_resources,
+                    sizeof(double)))) {
         fprintf(stderr, "Insufficient memory to allocate service total rigid_requirements!\n");
         exit(1);
     }
 
-    if (!(service->total_fluid_needs = (float *)calloc(num_resources,
-                    sizeof(float)))) {
+    if (!(service->total_fluid_needs = (double *)calloc(num_resources,
+                    sizeof(double)))) {
         fprintf(stderr, "Insufficient memory to allocate service total fluid_needs!\n");
         exit(1);
     }
@@ -191,9 +191,9 @@ flexsched_problem_t new_flexsched_problem(FILE *input) {
     for (i = 0; i < flex_prob->num_servers; i++) {
         flex_prob->servers[i] = new_server(flex_prob->num_resources);
         for (j = 0; j < flex_prob->num_resources; j++) 
-            fscanf(input,"%f", &(flex_prob->servers[i]->unit_capacities[j]));
+            fscanf(input,"%lf", &(flex_prob->servers[i]->unit_capacities[j]));
         for (j = 0; j < flex_prob->num_resources; j++) 
-            fscanf(input,"%f", &(flex_prob->servers[i]->total_capacities[j]));
+            fscanf(input,"%lf", &(flex_prob->servers[i]->total_capacities[j]));
     }
 
     flex_prob->services = 
@@ -202,15 +202,15 @@ flexsched_problem_t new_flexsched_problem(FILE *input) {
     for (i = 0; i < flex_prob->num_services; i++) {
         flex_prob->services[i] = new_service(flex_prob->num_resources);
         for (j = 0; j < flex_prob->num_resources; j++) 
-            fscanf(input,"%f", 
+            fscanf(input,"%lf", 
                 &(flex_prob->services[i]->unit_rigid_requirements[j]));
         for (j = 0; j < flex_prob->num_resources; j++) 
-            fscanf(input,"%f", &(flex_prob->services[i]->unit_fluid_needs[j]));
+            fscanf(input,"%lf", &(flex_prob->services[i]->unit_fluid_needs[j]));
         for (j = 0; j < flex_prob->num_resources; j++) 
-            fscanf(input,"%f", 
+            fscanf(input,"%lf", 
                 &(flex_prob->services[i]->total_rigid_requirements[j]));
         for (j = 0; j < flex_prob->num_resources; j++) 
-            fscanf(input,"%f", &(flex_prob->services[i]->total_fluid_needs[j]));
+            fscanf(input,"%lf", &(flex_prob->services[i]->total_fluid_needs[j]));
     }
 
     return flex_prob;

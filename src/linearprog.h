@@ -1,7 +1,7 @@
 #define RATIONAL 1
 #define INTEGER 0
 
-#define LP_IGNORE 666
+#define LP_IGNORE 666.0
 
 #ifdef CPLEX
 

@@ -148,7 +148,7 @@ flexsched_solution_t LPBOUND_scheduler(
     flex_soln->success = 1;
     objval = get_obj_val(lp);
     for (i = 0; i < flex_prob->num_services; i++) {
-        flex_soln->yields[i] = objval;
+        flex_soln->yields[i] = objval - EPSILON;
     }
     return flex_soln;
 }
@@ -192,14 +192,14 @@ flexsched_solution_t MILP_scheduler(
  *      - RRNZ: LPROUNDING(xxx)
  */
 flexsched_solution_t LPROUNDING_solver(
-    flexsched_problem_t flex_prob, float min_weight)
+    flexsched_problem_t flex_prob, double min_weight)
 {
     flexsched_solution_t flex_soln = new_flexsched_solution(flex_prob);
     int i, j;
-    float weights[flex_prob->num_servers];
-    float x, total_weight, select_over_weight;
+    double weights[flex_prob->num_servers];
+    double x, total_weight, select_over_weight;
     int feasible_servers[flex_prob->num_servers];
-    float yields[flex_prob->num_servers];
+    double yields[flex_prob->num_servers];
     int num_feasible_servers;
 
     // Create the placement problem in rational mode
@@ -270,21 +270,20 @@ flexsched_solution_t LPROUNDING_scheduler(
 }
 
 #define ALLOC_LP_NUM_COLS (flex_soln->prob->num_services)
+#define ALLOC_LP_COL_Y_I i
 
 // (A) for all J,R: y_{j}*b_{j,r} <= u_{n,r} - a_{j,r}
 // (B) for all N,R: sum_J y_{j}*b_{j,r} <= t_{n,r} - sum_J c_{j,r}
 // total rows: J*R+N*R = (J+N)*R, total elts: J*R+J*R = 2*J*R
-#define ALLOC_LP_NUM_ROWS (\
-    (flex_soln->prob->num_services+flex_soln->prob->num_servers)*\
-    flex_soln->prob->num_resources)
-#define ALLOC_LP_NUM_ELTS (\
-    2*flex_soln->prob->num_services*flex_soln->prob->num_resources)
-#define ALLOC_LP_ROW_B_IK (\
-    flex_soln->prob->num_services*flex_soln->prob->num_resources+\
-    flex_soln->prob->num_resources*flex_soln->mapping[i]+k)
+#define ALLOC_LP_NUM_ROWS ((flex_soln->prob->num_services+\
+    flex_soln->prob->num_servers)*flex_soln->prob->num_resources)
+#define ALLOC_LP_NUM_ELTS \
+    (2*flex_soln->prob->num_services*flex_soln->prob->num_resources)
+#define ALLOC_LP_ROW_B_JK \
+    (flex_soln->prob->num_resources*(flex_soln->prob->num_services+j)+k)
 
 linear_program_t create_allocation_lp(
-    flexsched_solution flex_soln, float minyield)
+    flexsched_solution_t flex_soln, double minyield)
 {
     int ia[ALLOC_LP_NUM_ELTS];
     int ja[ALLOC_LP_NUM_ELTS];
@@ -304,49 +303,52 @@ linear_program_t create_allocation_lp(
     elt = 0;
     row = 0;
 
-    // (A) for all J: y_j >= Y
-    for (i = 0; i < flex_soln->prob->num_services; i++) {
-        set_row_params(lp, row, 0.0, LP_IGNORE);
-        ia[elt] = row; ja[elt] = i; ra[elt] = 1.0; elt++;
-        ia[elt] = row; ja[elt] = ALLOC_LP_COL_OBJ; ra[elt] = -1.0; elt++;
-        row++;
-    }
-
-    // (B) for all J,R: y_{j}*b_{j,r} <= u_{n,r} - a_{j,r}
+    // (A) for all J,R: y_{j}*b_{j,r} <= u_{n,r} - a_{j,r}
     for (i = 0; i < flex_soln->prob->num_services; i++) {
         for (k = 0; k < flex_soln->prob->num_resources; k++) {
             set_row_params(lp, row, LP_IGNORE, flex_soln->prob->servers[
                 flex_soln->mapping[i]]->unit_capacities[k] -
                 flex_soln->prob->services[i]->unit_rigid_requirements[k]);
-            ia[elt] = row; ja[elt] = i; 
+            ia[elt] = row; ja[elt] = ALLOC_LP_COL_Y_I; 
             ra[elt] = flex_soln->prob->services[i]->unit_fluid_needs[k];
             elt++; row++;
         }
     }
 
-    // FIXME: run once for each server/resource
-    set_row_params(lp, FIXE, LP_IGNORE, 
-        compute_available_resource(flex_soln, flex_soln->mapping[i], k));
-    // (C) for all N,R: sum_J y_{j}*b_{j,r} <= t_{n,r} - sum_J c_{j,r}
-    for (i = 0; i < flex_soln->prob->num_services; i++) {
+    // last constraint is kind of funny...
+    for (j = 0; j < flex_soln->prob->num_servers; j++) {
         for (k = 0; k < flex_soln->prob->num_resources; k++) {
-            ia[elt] = FIXME; ja[elt] = i; 
+            set_row_params(lp, ALLOC_LP_ROW_B_JK, LP_IGNORE, 
+                compute_available_resource(flex_soln, j, k));
+        }
+    }
+
+    // (B) for all N,R: sum_J y_{j}*b_{j,r} <= t_{n,r} - sum_J c_{j,r}
+    for (i = 0; i < flex_soln->prob->num_services; i++) {
+        j = flex_soln->mapping[i];
+        for (k = 0; k < flex_soln->prob->num_resources; k++) {
+            ia[elt] = ALLOC_LP_ROW_B_JK; ja[elt] = ALLOC_LP_COL_Y_I; 
             ra[elt] = flex_soln->prob->services[i]->total_fluid_needs[k];
             elt++;
         }
     }
 
+    // now load matrix...
+    load_matrix(lp, ALLOC_LP_NUM_ELTS, ia, ja, ra);
+
     return lp;
 }
 
 void maximize_average_yield_given_minimum(
-    flexsched_solution_t flex_soln, float minyield)
+    flexsched_solution_t flex_soln, double minyield)
 {
     int i;
     linear_program_t lp = create_allocation_lp(flex_soln, minyield);
 
-    for (i = 0; i < flex_prob->num_services; i++) {
-        flex_soln->yields[i] = get_col_val(lp, i) - EPSILON;
+    if (solve_linear_program(lp, RATIONAL)) return;
+
+    for (i = 0; i < flex_soln->prob->num_services; i++) {
+        flex_soln->yields[i] = get_col_val(lp, ALLOC_LP_COL_Y_I) - EPSILON;
     }
     return;
 }
