@@ -24,7 +24,7 @@ QSORT_CMP_FUNC_DECL(cmp_greedy_S2)
 }
 
 /* Sorting the services by decreasing sum of fluid needs */
-int cmp_greedy_S3(void *qsort_thunk_vp, const void *xvp, const void *yvp)
+QSORT_CMP_FUNC_DECL(cmp_greedy_S3)
 {
     flexsched_problem_t flex_prob = (flexsched_problem_t)qsort_thunk_vp;
     int x = *(int *)xvp, y = *(int *)yvp;
@@ -37,7 +37,7 @@ int cmp_greedy_S3(void *qsort_thunk_vp, const void *xvp, const void *yvp)
 }
 
 /* Sorting the services by decreasing max of rigid requirements */
-int cmp_greedy_S4(void *qsort_thunk_vp, const void *xvp, const void *yvp)
+QSORT_CMP_FUNC_DECL(cmp_greedy_S4)
 {
     flexsched_problem_t flex_prob = (flexsched_problem_t)qsort_thunk_vp;
     int x = *(int *)xvp, y = *(int *)yvp;
@@ -51,7 +51,7 @@ int cmp_greedy_S4(void *qsort_thunk_vp, const void *xvp, const void *yvp)
 }
 
 /* Sorting the services by decreasing sum of rigid requirements */
-int cmp_greedy_S5(void *qsort_thunk_vp, const void *xvp, const void *yvp)
+QSORT_CMP_FUNC_DECL(cmp_greedy_S5)
 {
     flexsched_problem_t flex_prob = (flexsched_problem_t)qsort_thunk_vp;
     int x = *(int *)xvp, y = *(int *)yvp;
@@ -65,7 +65,7 @@ int cmp_greedy_S5(void *qsort_thunk_vp, const void *xvp, const void *yvp)
 }
 
 /* Sorting by decreasing max of sum rigid requirements and fluid needs*/
-int cmp_greedy_S6(void *qsort_thunk_vp, const void *xvp, const void *yvp)
+QSORT_CMP_FUNC_DECL(cmp_greedy_S6)
 {
     flexsched_problem_t flex_prob = (flexsched_problem_t)qsort_thunk_vp;
     int x = *(int *)xvp, y = *(int *)yvp;
@@ -85,7 +85,7 @@ int cmp_greedy_S6(void *qsort_thunk_vp, const void *xvp, const void *yvp)
 }
 
 /* Sorting the services by decreasing sum of all requirements and needs */
-int cmp_greedy_S7(void *qsort_thunk_vp, const void *xvp, const void *yvp)
+QSORT_CMP_FUNC_DECL(cmp_greedy_S7)
 {
     flexsched_problem_t flex_prob = (flexsched_problem_t)qsort_thunk_vp;
     int x = *(int *)xvp, y = *(int *)yvp;
@@ -101,7 +101,7 @@ int cmp_greedy_S7(void *qsort_thunk_vp, const void *xvp, const void *yvp)
 }
 
 void GREEDY_sort_services(int *sortmap, flexsched_problem_t flex_prob, 
-    int (*cmp_items)(void *, const void *, const void *))
+    qsort_cmp_func)
 {
     int i;
 
@@ -290,9 +290,8 @@ void GREEDY_compute_mapping(flexsched_solution_t flex_soln,
     return;
 }
 
-flexsched_solution_t GREEDY_solver(flexsched_problem_t flex_prob,
-    int (*cmp_items)(void *, const void *, const void *), 
-    int (*pick_server)(flexsched_solution_t, int))
+flexsched_solution_t GREEDY_solver(flexsched_problem_t flex_prob, 
+    qsort_cmp_func *cmp_items, int (*pick_server)(flexsched_solution_t, int))
 {
     int sortmap[flex_prob->num_services];
     flexsched_solution_t flex_soln = new_flexsched_solution(flex_prob);
@@ -325,7 +324,7 @@ flexsched_solution_t GREEDY_solver(flexsched_problem_t flex_prob,
 flexsched_solution_t GREEDY_scheduler(
     flexsched_problem_t flex_prob, char *name, char **options) 
 {
-    int (*cmp_items)(void *, const void *, const void *) = NULL;
+    qsort_cmp_func *cmp_items = NULL;
     int (*pick_server)(flexsched_solution_t, int) = NULL;
     char **opt;
 
@@ -369,9 +368,8 @@ flexsched_solution_t METAGREEDY_scheduler(
 {
     flexsched_solution_t flex_soln = new_flexsched_solution(flex_prob);
 
-    int (*sorting[])(void *, const void *, const void *) = {cmp_greedy_S1, 
-        cmp_greedy_S2, cmp_greedy_S3, cmp_greedy_S4, 
-        cmp_greedy_S5, cmp_greedy_S6, cmp_greedy_S7, NULL};
+    int qsort_cmp_func sorting[] = {cmp_greedy_S1, cmp_greedy_S2, cmp_greedy_S3, 
+        cmp_greedy_S4, cmp_greedy_S5, cmp_greedy_S6, cmp_greedy_S7, NULL};
     int (*picking[])(flexsched_solution_t, int) = {GREEDY_pick_server_P1, 
         GREEDY_pick_server_P2, GREEDY_pick_server_P3, GREEDY_pick_server_P4, 
         GREEDY_pick_server_P5, GREEDY_pick_server_P6, GREEDY_pick_server_P7, 
@@ -421,9 +419,8 @@ flexsched_solution_t METAGREEDYLIGHT_scheduler(
 {
     flexsched_solution_t flex_soln = new_flexsched_solution(flex_prob);
 
-    int (*sorting[])(void *, const void *, const void *) = {cmp_greedy_S3, 
-        cmp_greedy_S2, cmp_greedy_S5, cmp_greedy_S7, 
-        cmp_greedy_S6, cmp_greedy_S2, cmp_greedy_S3,
+    qsort_cmp_func sorting[] = {cmp_greedy_S3, cmp_greedy_S2, cmp_greedy_S5, 
+        cmp_greedy_S7, cmp_greedy_S6, cmp_greedy_S2, cmp_greedy_S3, 
         cmp_greedy_S6, cmp_greedy_S5, NULL};
     int (*picking[])(flexsched_solution_t, int) = {GREEDY_pick_server_P1, 
         GREEDY_pick_server_P1, GREEDY_pick_server_P1, GREEDY_pick_server_P1, 

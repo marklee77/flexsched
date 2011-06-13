@@ -1,3 +1,6 @@
+#ifndef LINEARPROG_H
+#define LINEARPROG_H
+
 #define RATIONAL 1
 #define INTEGER 0
 
@@ -33,3 +36,5 @@ int solve_linear_program(linear_program_t lp, int rational);
 double get_obj_val(linear_program_t lp);
 int get_mip_col_val(linear_program_t lp, int col);
 double get_col_val(linear_program_t lp, int col);
+
+#endif

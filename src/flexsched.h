@@ -132,7 +132,7 @@ extern void *qsort_thunk_vp;
 #define qsort_r(base, nel, width, thunk, compar) \
     (qsort_thunk_vp = thunk; qsort(base, nel, width, compar))
 #define QSORT_CMP_CALL(cmp_items, thunk, x, y) \
-    (qsort_thunk_vp = thunk; cmp_items(x, y))
+    (qsort_thunk_vp = thunk, cmp_items(x, y))
 
 #else
 #define QSORT_CMP_FUNC_DECL(name) \

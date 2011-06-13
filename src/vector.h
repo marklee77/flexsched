@@ -1,50 +1,44 @@
 #ifndef VECTOR_H
 #define VECTOR_H
 
-typedef struct vector_array_t {
-    int num_dims;
-    float **vectors;
-} *vector_array;
+typedef struct vp_vector_s {
+    double *units;
+    double *totals;
+} *vp_vector_t;
 
-typedef struct vp_problem_struct {
+typedef struct vp_vector_array_s {
+    int num_vectors;
     int num_dims;
-    int num_items;
-    int num_bins;
-    float **items;
-    float **bins;
-    // unlike with flex_prob, we just store the solution in the problem
+    vp_vector_t *vectors;
+} *vp_vector_array_t;
+
+typedef struct vp_problem_s {
+    vp_vector_array_t items;
+    vp_vector_array_t bins;
+} *vp_problem_t; 
+
+typedef struct vp_solution_s {
+    vp_problem_t prob;
     int *mapping;
-    float **loads; // useful scratch variable
-    float **capacities; // useful scratch variable
-    float *misc; // scratch -- inelegant but useful...
+    double **loads; // useful scratch variable
     char misc_output[100];
-} *vp_problem; 
+} *vp_solution_t;
 
 // function prototypes
-vp_problem new_vp_problem(float);
-void reset_vp_problem(vp_problem);
-void free_vp_problem(vp_problem);
+vp_problem_t new_vp_problem(flexsched_problem_t, double);
+void free_vp_problem(vp_problem_t);
+vp_solution_t new_vp_solution(vp_problem_t);
+void free_vp_solution(vp_solution_t);
 
-int vp_vector_can_fit_in_bin(vp_problem, int, int);
-void vp_put_vector_in_bin(vp_problem, int, int);
-int vp_put_vector_in_bin_safe(vp_problem, int, int);
-float vp_compute_sum_load(vp_problem, int);
+int vp_vector_can_fit_in_bin(vp_solution_t, int, int);
+void vp_put_vector_in_bin(vp_solution_t, int, int);
+int vp_put_vector_in_bin_safe(vp_solution_t, int, int);
+double vp_compute_sum_load(vp_solution_t, int);
 
 int cmp_int_arrays_lex(int, int [], int []);
 
 // qsort comparison functions
 int cmp_ints(const void *, const void *);
-
-#ifdef NO_QSORT_R
-extern void *global_qsort_vptr;
-#define qsort_r(base, nel, width, thunk, compar) global_qsort_vptr = thunk; \
-    qsort(base, nel, width, compar);
-typedef (int)(const void *, const void *) qsort_cmp_func;
-
-#else
-typedef int(qsort_cmp_func)(void *, const void *, const void *);
-
-#endif
 
 qsort_cmp_func cmp_vector_array_idxs_lex;
 qsort_cmp_func rcmp_vector_array_idxs_lex;
@@ -61,8 +55,8 @@ qsort_cmp_func rcmp_vector_array_idxs_maxratio;
 qsort_cmp_func cmp_vector_array_idxs_maxdiff;
 qsort_cmp_func rcmp_vector_array_idxs_maxdiff;
 
-qsort_cmp_func cmp_float_array_idxs;
-qsort_cmp_func rcmp_float_array_idxs;
+qsort_cmp_func cmp_double_array_idxs;
+qsort_cmp_func rcmp_double_array_idxs;
 
 qsort_cmp_func *get_vp_cmp_func(char *);
 

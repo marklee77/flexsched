@@ -1,139 +1,143 @@
 #include "flexsched.h"
 #include "vector.h"
 
-#ifdef NO_QSORT_R
-void *global_qsort_vptr;
-#endif
-
-vp_problem new_vp_problem(float yield) 
+vp_problem_t new_vp_problem(flexsched_problem_t flex_prob, double yield) 
 {
     int i, j;
-    vp_problem vp_prob;
-
-    vp_prob = (vp_problem)calloc(1, sizeof(struct vp_problem_struct));
-    vp_prob->num_dims = flex_prob->num_rigid + flex_prob->num_fluid;
-    vp_prob->num_items = flex_prob->num_services;
-    vp_prob->num_bins = flex_prob->num_servers;
-    vp_prob->items = (float **)calloc(vp_prob->num_items, sizeof(float *));
+    vp_problem_t vp_prob = (vp_problem_t)malloc(sizeof(struct vp_problem_s));
+    vp_prob->items = 
+        (vp_vector_array_t)malloc(sizeof(struct vp_vector_array_s));
+    vp_prob->items->num_vectors = flex_prob->num_services;
+    vp_prob->items->num_dims = flex_prob->num_resources;
+    vp_prob->items->vectors = 
+        (vp_vector_t *)calloc(vp_prob->items->num_vectors, sizeof(vp_vector_t));
+    for (i = 0; i< vp_prob->items->num_vectors; i++) {
+        vp_prob->items->vectors[i] = 
+            (vp_vector_t)malloc(sizeof(struct vp_vector_s));
+        vp_prob->items->vectors[i]->units = 
+            (double *)calloc(vp_prob->items->num_dims, sizeof(double));
+        vp_prob->items->vectors[i]->totals = 
+            (double *)calloc(vp_prob->items->num_dims, sizeof(double));
+        for (j = 0; j < vp_prob->items->num_dims; j++) {
+            vp_prob->items->vectors[i]->units[j] =
+                flex_prob->services[i]->unit_rigid_requirements[j] +
+                yield*flex_prob->services[i]->unit_fluid_needs[j];
+            vp_prob->items->vectors[i]->totals[j] =
+                flex_prob->services[i]->total_rigid_requirements[j] +
+                yield*flex_prob->services[i]->total_fluid_needs[j];
+        }
+    }
     vp_prob->bins = 
-        (float **)calloc(vp_prob->num_bins, sizeof(float *));
-    vp_prob->mapping = (int *)calloc(vp_prob->num_items, sizeof(int));
-    vp_prob->loads = (float **)calloc(vp_prob->num_bins, sizeof(float *));
-    vp_prob->capacities = (float **)calloc(vp_prob->num_bins, sizeof(float *));
-    vp_prob->misc = NULL;
-    for (i = 0; i< vp_prob->num_items; i++) {
-        vp_prob->items[i] = 
-            (float *)calloc(vp_prob->num_dims, sizeof(float));
-        vp_prob->mapping[i] = -1;
-        for (j = 0; j < flex_prob->num_rigid; j++) {
-            vp_prob->items[i][j] = flex_prob->rigid_needs[i][j]; 
-        }
-        for (j = 0; j < flex_prob->num_fluid; j++) {
-            vp_prob->items[i][flex_prob->num_rigid + j] = 
-                (flex_prob->slas[i] + yield * (1.0 - flex_prob->slas[i])) * 
-                flex_prob->fluid_needs[i][j];
-        }
-    }
-    for (i = 0; i < vp_prob->num_bins; i++) {
-        vp_prob->bins[i] = 
-            (float *)calloc(vp_prob->num_dims, sizeof(float));
-        vp_prob->loads[i] = (float *)calloc(vp_prob->num_dims, sizeof(float));
-        vp_prob->capacities[i] = (float *)calloc(vp_prob->num_dims, sizeof(float));
-        for (j = 0; j < flex_prob->num_rigid; j++) {
-            vp_prob->bins[i][j] = flex_prob->rigid_capacities[i][j];
-            vp_prob->loads[i][j] = 0.0;
-            vp_prob->capacities[i][j] = flex_prob->rigid_capacities[i][j];
-        }
-        for (j = 0; j < flex_prob->num_fluid; j++) {
-            vp_prob->bins[i][flex_prob->num_rigid + j] = 
-                flex_prob->fluid_capacities[i][j];
-            vp_prob->loads[i][flex_prob->num_rigid + j] = 0.0;
-            vp_prob->capacities[i][flex_prob->num_rigid + j] = 
-                flex_prob->fluid_capacities[i][j];
+        (vp_vector_array_t)calloc(1, sizeof(struct vp_vector_array_s));
+    vp_prob->bins->num_vectors = flex_prob->num_servers;
+    vp_prob->bins->num_dims = flex_prob->num_resources;
+    vp_prob->bins->vectors = 
+        (vp_vector_t *)calloc(vp_prob->bins->num_vectors, sizeof(vp_vector_t));
+    for (i = 0; i< vp_prob->bins->num_vectors; i++) {
+        vp_prob->bins->vectors[i] = 
+            (vp_vector_t)calloc(1, sizeof(struct vp_vector_s));
+        vp_prob->bins->vectors[i]->units = 
+            (double *)calloc(vp_prob->bins->num_dims, sizeof(double));
+        vp_prob->bins->vectors[i]->totals = 
+            (double *)calloc(vp_prob->bins->num_dims, sizeof(double));
+        for (j = 0; j < vp_prob->bins->num_dims; j++) {
+            vp_prob->items->vectors[i]->units[j] =
+                flex_prob->servers[i]->unit_capacities[j];
+            vp_prob->items->vectors[i]->totals[j] =
+                flex_prob->servers[i]->total_capacities[j];
         }
     }
+
     return vp_prob;
 }
 
-void reset_vp_problem(vp_problem vp_prob) 
-{
-    int i, j;
-    if (vp_prob->misc) {
-        free(vp_prob->misc);
-        vp_prob->misc = NULL;
-    }
-    for (i = 0; i< vp_prob->num_items; i++) {
-        vp_prob->mapping[i] = -1;
-    }
-    for (i = 0; i < vp_prob->num_bins; i++) {
-        for (j = 0; j < flex_prob->num_rigid; j++) {
-            vp_prob->loads[i][j] = 0.0;
-            vp_prob->capacities[i][j] = flex_prob->rigid_capacities[i][j];
-        }
-        for (j = 0; j < flex_prob->num_fluid; j++) {
-            vp_prob->loads[i][flex_prob->num_rigid + j] = 0.0;
-            vp_prob->capacities[i][flex_prob->num_rigid + j] = 
-                flex_prob->fluid_capacities[i][j];
-        }
-    }
-
-    return;
-}
-
-void free_vp_problem(vp_problem vp_prob)
+void free_vp_problem(vp_problem_t vp_prob)
 {
     int i;
-    free(vp_prob->mapping);
-    for (i = 0; i < vp_prob->num_items; i++) {
-        free(vp_prob->items[i]);
+    for (i = 0; i < vp_prob->items->num_vectors; i++) {
+        free(vp_prob->items->vectors[i]->units);
+        free(vp_prob->items->vectors[i]->totals);
+        free(vp_prob->items->vectors[i]);
     }
     free(vp_prob->items);
-    for (i = 0; i < vp_prob->num_bins; i++) {
-        free(vp_prob->bins[i]);
-        free(vp_prob->loads[i]);
-        free(vp_prob->capacities[i]);
+    for (i = 0; i < vp_prob->bins->num_vectors; i++) {
+        free(vp_prob->bins->vectors[i]->units);
+        free(vp_prob->bins->vectors[i]->totals);
+        free(vp_prob->bins->vectors[i]);
     }
-    free(vp_prob->loads);
-    free(vp_prob->capacities);
-    free(vp_prob->misc);
     free(vp_prob->bins);
     free(vp_prob);
     return;
 }
 
-int vp_vector_can_fit_in_bin(vp_problem vp_prob, int v, int b)
+vp_solution_t new_vp_solution(vp_problem_t vp_prob)
+{
+    int i, j;
+    vp_solution_t vp_soln = (vp_solution_t)malloc(sizeof(struct vp_solution_s));
+    vp_soln->mapping = (int *)calloc(vp_prob->items->num_vectors, sizeof(int));
+    for (i = 0; i< vp_prob->items->num_vectors; i++) {
+        vp_soln->mapping[i] = -1;
+    }
+    vp_soln->loads = (double **)calloc(vp_prob->bins->num_vectors, 
+        sizeof(double *));
+    for (i = 0; i < vp_prob->bins->num_vectors; i++) {
+        vp_soln->loads[i] = (double *)calloc(vp_prob->bins->num_dims, 
+            sizeof(double));
+        for (j = 0; j < vp_prob->bins->num_dims; j++) {
+            vp_soln->loads[i][j] = 0.0;
+        }
+    }
+
+    return vp_soln;
+}
+
+void free_vp_solution(vp_solution_t vp_soln)
 {
     int i;
-    for (i = 0; i < vp_prob->num_dims; i++) {
-        if (vp_prob->items[v][i] > vp_prob->capacities[b][i]) {
+    for (i = 0; i < vp_soln->prob->bins->num_vectors; i++) {
+        free(vp_soln->loads[i]);
+    }
+    free(vp_soln->loads);
+    free(vp_soln->mapping);
+    free(vp_soln);
+    return;
+}
+
+int vp_vector_can_fit_in_bin(vp_solution_t vp_soln, int v, int b)
+{
+    int i;
+    for (i = 0; i < vp_soln->prob->bins->num_dims; i++) {
+        if (vp_soln->prob->bins->vectors[b]->units[i] < 
+            vp_soln->prob->items->vectors[v]->units[i] ||
+            vp_soln->prob->bins->vectors[b]->totals[i] <
+            vp_soln->loads[b][i] + vp_soln->prob->items->vectors[v]->totals[i]) 
+        {
             return 0;
         }
     }
     return 1;
 }
 
-void vp_put_vector_in_bin(vp_problem vp_prob, int v, int b)
+void vp_put_vector_in_bin(vp_solution_t vp_soln, int v, int b)
 {
     int i;
-    vp_prob->mapping[v] = b;
-    for (i = 0; i < vp_prob->num_dims; i++) {
-        vp_prob->loads[b][i] += vp_prob->items[v][i];
-        vp_prob->capacities[b][i] -= vp_prob->items[v][i];
+    vp_soln->mapping[v] = b;
+    for (i = 0; i < vp_soln->prob->bins->num_dims; i++) {
+        vp_soln->loads[b][i] += vp_soln->prob->items->vectors[v]->totals[i];
     }
-
 }
 
-int vp_put_vector_in_bin_safe(vp_problem vp_prob, int v, int b)
+int vp_put_vector_in_bin_safe(vp_solution_t vp_soln, int v, int b)
 {
-    if (!vp_vector_can_fit_in_bin(vp_prob, v, b)) return 1;
-    vp_put_vector_in_bin(vp_prob, v, b);
+    if (!vp_vector_can_fit_in_bin(vp_soln, v, b)) return 1;
+    vp_put_vector_in_bin(vp_soln, v, b);
     return 0;
 }
 
 // load computed as the sum of all dims of all objects
-float vp_compute_sum_load(vp_problem vp_prob, int b)
+double vp_compute_sum_load(vp_solution_t vp_soln, int b)
 {
-  return array_sum(vp_prob->loads[b], vp_prob->num_dims);
+  return double_array_sum(vp_soln->loads[b], vp_soln->prob->bins->num_dims);
 }
 
 // NOT sort function
@@ -148,182 +152,104 @@ int cmp_int_arrays_lex(int length, int a1[], int a2[]) {
 }
 
 // compare lexicographically
-#ifdef NO_QSORT_R
-int cmp_vector_array_idxs_lex(const void *x_ptr, const void *y_ptr)
+QSORT_CMP_FUNC_DECL(cmp_vector_array_idxs_lex)
 {
-    vector_array va = (vector_array)global_qsort_vptr;
-#else
-int cmp_vector_array_idxs_lex(void *v_ptr, const void *x_ptr, const void *y_ptr)
-{
-    vector_array va = (vector_array)v_ptr;
-#endif
-    int x = *((int *)x_ptr);
-    int y = *((int *)y_ptr);
+    vp_vector_array_t va = (vp_vector_array_t)qsort_thunk_vp;
+    int x = *(int *)xvp, y = *(int *)yvp;
 
     int i;
 
     // FIXME: could call cmp int arrays lex here...
     for (i = 0; i < va->num_dims; i++) {
-        if (va->vectors[x][i] < va->vectors[y][i]) return -1;
-        if (va->vectors[x][i] > va->vectors[y][i]) return 1;
+        if (va->vectors[x]->totals[i] < va->vectors[y]->totals[i]) return -1;
+        if (va->vectors[x]->totals[i] > va->vectors[y]->totals[i]) return 1;
     }
     return 0;
 }
 
+QSORT_CMP_FUNC_DECL(rcmp_vector_array_idxs_lex)
+{
 #ifdef NO_QSORT_R
-int rcmp_vector_array_idxs_lex(const void *x_ptr, const void *y_ptr)
-{
-    return -1 * cmp_vector_array_idxs_lex(x_ptr, y_ptr);
-}
+    return -1 * cmp_vector_array_idxs_lex(xvp, yvp);
 #else
-int rcmp_vector_array_idxs_lex(void *v_ptr, const void *x_ptr, const void *y_ptr)
-{
-    return -1 * cmp_vector_array_idxs_lex(v_ptr, x_ptr, y_ptr);
-}
+    return -1 * cmp_vector_array_idxs_lex(qsort_thunk_vp, xvp, yvp);
 #endif
+}
 
 /* max comparison of vectors */
 // for descinding order sort...
-#ifdef NO_QSORT_R
-int cmp_vector_array_idxs_max(const void *x_ptr, const void *y_ptr)
+QSORT_CMP_FUNC_DECL(cmp_vector_array_idxs_max)
 {
-    vector_array va = (vector_array)global_qsort_vptr;
-#else
-int cmp_vector_array_idxs_max(void *v_ptr, const void *x_ptr, const void *y_ptr)
-{
-    vector_array va = (vector_array)v_ptr;
-#endif
-    int x = *((int *)x_ptr);
-    int y = *((int *)y_ptr);
-
-    return CMP(array_max(va->vectors[x], va->num_dims),
-        array_max(va->vectors[y], va->num_dims));
+    vp_vector_array_t va = (vp_vector_array_t)qsort_thunk_vp;
+    int x = *(int *)xvp, y = *(int *)yvp;
+    return CMP(double_array_max(va->vectors[x]->totals, va->num_dims),
+        double_array_max(va->vectors[y]->totals, va->num_dims));
 }
 
+QSORT_CMP_FUNC_DECL(rcmp_vector_array_idxs_max)
+{
 #ifdef NO_QSORT_R
-int rcmp_vector_array_idxs_max(const void *x_ptr, const void *y_ptr)
-{
-    return -1 * cmp_vector_array_idxs_max(x_ptr, y_ptr);
-}
+    return -1 * cmp_vector_array_idxs_max(xvp, yvp);
 #else
-int rcmp_vector_array_idxs_max(void *v_ptr, const void *x_ptr, 
-    const void *y_ptr)
-{
-    return -1 * cmp_vector_array_idxs_max(v_ptr, x_ptr, y_ptr);
-}
+    return -1 * cmp_vector_array_idxs_max(qsort_thunk_vp, xvp, yvp);
 #endif
+}
+
 
 /* Sum comparison of vectors */
-// for descinding order sort...
+QSORT_CMP_FUNC_DECL(cmp_vector_array_idxs_sum)
+{
+    vp_vector_array_t va = (vp_vector_array_t)qsort_thunk_vp;
+    int x = *(int *)xvp, y = *(int *)yvp;
+    return CMP(double_array_sum(va->vectors[x]->totals, va->num_dims),
+        double_array_sum(va->vectors[y]->totals, va->num_dims));
+}
+
+QSORT_CMP_FUNC_DECL(rcmp_vector_array_idxs_sum)
+{
 #ifdef NO_QSORT_R
-int cmp_vector_array_idxs_sum(const void *x_ptr, const void *y_ptr)
-{
-    vector_array va = (vector_array)global_qsort_vptr;
+    return -1 * cmp_vector_array_idxs_sum(xvp, yvp);
 #else
-int cmp_vector_array_idxs_sum(void *v_ptr, const void *x_ptr, const void *y_ptr)
-{
-    vector_array va = (vector_array)v_ptr;
+    return -1 * cmp_vector_array_idxs_sum(qsort_thunk_vp, xvp, yvp);
 #endif
-    int x = *((int *)x_ptr);
-    int y = *((int *)y_ptr);
-
-    return CMP(array_sum(va->vectors[x], va->num_dims), 
-        array_sum(va->vectors[y], va->num_dims));
 }
 
+QSORT_CMP_FUNC_DECL(cmp_vector_array_idxs_maxratio)
+{
+    vp_vector_array_t va = (vp_vector_array_t)qsort_thunk_vp;
+    int x = *(int *)xvp, y = *(int *)yvp;
+    return CMP(double_array_max(va->vectors[x]->totals, va->num_dims) / 
+        double_array_min(va->vectors[x]->totals, va->num_dims), 
+        double_array_max(va->vectors[y]->totals, va->num_dims) / 
+        double_array_min(va->vectors[y]->totals, va->num_dims));
+}
+
+QSORT_CMP_FUNC_DECL(rcmp_vector_array_idxs_maxratio)
+{
 #ifdef NO_QSORT_R
-int rcmp_vector_array_idxs_sum(const void *x_ptr, const void *y_ptr)
-{
-    return -1 * cmp_vector_array_idxs_sum(x_ptr, y_ptr);
-}
+    return -1 * cmp_vector_array_idxs_maxratio(xvp, yvp);
 #else
-int rcmp_vector_array_idxs_sum(void * v_ptr, const void *x_ptr, 
-    const void *y_ptr)
-{
-    return -1 * cmp_vector_array_idxs_sum(v_ptr, x_ptr, y_ptr);
-}
+    return -1 * cmp_vector_array_idxs_maxratio(qsort_thunk_vp, xvp, yvp);
 #endif
+}
 
+QSORT_CMP_FUNC_DECL(cmp_vector_array_idxs_maxdiff)
+{
+    vp_vector_array_t va = (vp_vector_array_t)qsort_thunk_vp;
+    int x = *(int *)xvp, y = *(int *)yvp;
+    return CMP(double_array_max(va->vectors[x]->totals, va->num_dims) -
+        double_array_min(va->vectors[x]->totals, va->num_dims), 
+        double_array_max(va->vectors[y]->totals, va->num_dims) - 
+        double_array_min(va->vectors[y]->totals, va->num_dims));
+}
+
+QSORT_CMP_FUNC_DECL(rcmp_vector_array_idxs_maxdiff)
+{
 #ifdef NO_QSORT_R
-int cmp_vector_array_idxs_maxratio(const void *x_ptr, const void *y_ptr)
-{
-    vector_array va = (vector_array)global_qsort_vptr;
+    return -1 * cmp_vector_array_idxs_maxdiff(xvp, yvp);
 #else
-int cmp_vector_array_idxs_maxratio(void *v_ptr, const void *x_ptr, 
-    const void *y_ptr)
-{
-    vector_array va = (vector_array)v_ptr;
+    return -1 * cmp_vector_array_idxs_maxdiff(qsort_thunk_vp, xvp, yvp);
 #endif
-    int x = *((int *)x_ptr);
-    int y = *((int *)y_ptr);
-
-    return CMP(array_max(va->vectors[x], va->num_dims) / 
-        array_min(va->vectors[x], va->num_dims), 
-        array_max(va->vectors[y], va->num_dims) / 
-        array_min(va->vectors[y], va->num_dims));
-}
-
-#ifdef NO_QSORT_R
-int rcmp_vector_array_idxs_maxratio(const void *x_ptr, const void *y_ptr)
-{
-    return -1 * cmp_vector_array_idxs_maxratio(x_ptr, y_ptr);
-}
-#else
-int rcmp_vector_array_idxs_maxratio(void * v_ptr, const void *x_ptr, 
-    const void *y_ptr)
-{
-    return -1 * cmp_vector_array_idxs_maxratio(v_ptr, x_ptr, y_ptr);
-}
-#endif
-
-#ifdef NO_QSORT_R
-int cmp_vector_array_idxs_maxdiff(const void *x_ptr, const void *y_ptr)
-{
-    vector_array va = (vector_array)global_qsort_vptr;
-#else
-int cmp_vector_array_idxs_maxdiff(void *v_ptr, const void *x_ptr, 
-        const void *y_ptr)
-{
-    vector_array va = (vector_array)v_ptr;
-#endif
-    int x = *((int *)x_ptr);
-    int y = *((int *)y_ptr);
-
-    return CMP(array_max(va->vectors[x], va->num_dims) - 
-        array_min(va->vectors[x], va->num_dims),
-        array_max(va->vectors[y], va->num_dims) - 
-        array_min(va->vectors[y], va->num_dims));
-}
-
-#ifdef NO_QSORT_R
-int rcmp_vector_array_idxs_maxdiff(const void *x_ptr, const void *y_ptr)
-{
-    return -1 * cmp_vector_array_idxs_maxdiff(x_ptr, y_ptr);
-}
-#else
-int rcmp_vector_array_idxs_maxdiff(void * v_ptr, const void *x_ptr, 
-    const void *y_ptr)
-{
-    return -1 * cmp_vector_array_idxs_maxdiff(v_ptr, x_ptr, y_ptr);
-}
-#endif
-
-/* Misc comparison of vectors  */
-/* By decreasing order of MISC */
-// FIXME: only really used by Maruyama, which is not currently implemented
-#ifdef NO_QSORT_R
-int rcmp_vp_vector_idxs_misc(const void *x_ptr, const void *y_ptr)
-{
-    vp_problem vp_prob = (vp_problem)global_qsort_vptr;
-#else
-int rcmp_vp_vector_idxs_misc(void *vp_ptr, const void *x_ptr, const void *y_ptr)
-{
-    vp_problem vp_prob = (vp_problem)vp_ptr;
-#endif
-    int x = *((int *)x_ptr);
-    int y = *((int *)y_ptr);
-
-    return RCMP(vp_prob->misc[x], vp_prob->misc[y]);
 }
 
 int cmp_ints(const void *x_ptr, const void *y_ptr)
@@ -333,32 +259,21 @@ int cmp_ints(const void *x_ptr, const void *y_ptr)
     return CMP(x, y);
 }
 
-#ifdef NO_QSORT_R
-int cmp_float_array_idxs(const void *x_ptr, const void *y_ptr)
+QSORT_CMP_FUNC_DECL(cmp_double_array_idxs)
 {
-    float *vals = (float *)global_qsort_vptr;
-#else
-int cmp_float_array_idxs(void *vals_ptr, const void *x_ptr, const void *y_ptr)
-{
-    float *vals = (float *)vals_ptr;
-#endif
-    int x = *((int *)x_ptr);
-    int y = *((int *)y_ptr);
-
+    double *vals = (double *)qsort_thunk_vp;
+    int x = *(int *)xvp, y = *(int *)yvp;
     return CMP(vals[x], vals[y]);
 }
 
+QSORT_CMP_FUNC_DECL(rcmp_double_array_idxs)
+{
 #ifdef NO_QSORT_R
-int rcmp_float_array_idxs(const void *x_ptr, const void *y_ptr)
-{
-    return -1 * cmp_float_array_idxs(x_ptr, y_ptr);
-}
+    return -1 * cmp_double_array_idxs(xvp, yvp);
 #else
-int rcmp_float_array_idxs(void *vals_ptr, const void *x_ptr, const void *y_ptr)
-{
-    return -1 * cmp_float_array_idxs(vals_ptr, x_ptr, y_ptr);
-}
+    return -1 * cmp_double_array_idxs(qsort_thunk_vp, xvp, yvp);
 #endif
+}
 
 qsort_cmp_func *get_vp_cmp_func(char *cmp_name) {
     if (NULL == cmp_name) {
