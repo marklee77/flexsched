@@ -4,56 +4,25 @@
 #define FIRST_FIT 0
 #define BEST_FIT 1
 
-/* A helper function to compute the thingies from
- * the Maruyama article, and puts them into the misc 
- * field of the vp_prob->items
- */
-void vp_compute_degrees_of_dominance(vp_problem vp_prob)
-{
-    int i, j;
-    float degrees[vp_prob->num_dims];
-
-    // For each dimension compute its degree of dominance
-    for (i = 0; i < vp_prob->num_dims; i++) {
-        degrees[i] = 0.0;
-        // sets the sums to zero
-        for (j = 0; j < vp_prob->num_bins; j++) 
-            degrees[i] += ceilf(vp_prob->loads[j][i] - 1.0);
-
-        degrees[i] /= vp_prob->num_bins;
-    }
-
-    for (i = 0; i < vp_prob->num_items; i++) {
-        vp_prob->misc[i] = 0.0;
-        for (j = 0; j < vp_prob->num_dims; j++)
-            vp_prob->misc[i] += degrees[j] * vp_prob->items[i][j];
-    }
-
-    return;
-}
-
 /* Implementation of The standard "Fit" algorithms for
  * solving binpacking:
  *    "FIRST"   or "BEST":  fitting policy
  *    "LEX", "MAX", or "SUM": sorting policy
- *    "MARUYAMA" sorting: the Maruyama optimization // FIXME: not implemented
  *
  * Returns the number of used bins
  */
-int solve_vp_problem_FITD(vp_problem vp_prob, int args[], 
+vp_solution_t solve_vp_problem_FITD(vp_problem_t vp_prob, int args[], 
     qsort_cmp_func *cmp_item_idxs)
 {
     int i, j;
     int fit_type = args[0];
     int sortmap[vp_prob->num_items];
-    float sumloads[vp_prob->num_bins];
-    struct vector_array_t va;
-    va.num_dims = vp_prob->num_dims;
+    double sumloads[vp_prob->num_bins];
+    vp_solution_t vp_soln = new_vp_solution(vp_prob);
 
     // set up vector sort map
     for (i = 0; i < vp_prob->num_items; i++) sortmap[i] = i;
-    va.vectors = vp_prob->items;
-    qsort_r(sortmap, vp_prob->num_items, sizeof(int), &va, 
+    qsort_r(sortmap, vp_prob->num_items, sizeof(int), vp_prob->items, 
         cmp_item_idxs);
 
     // Place vectors into bins
@@ -61,22 +30,22 @@ int solve_vp_problem_FITD(vp_problem vp_prob, int args[],
         case FIRST_FIT:
         for (i = 0; i < vp_prob->num_items; i++) {
             for (j = 0; j < vp_prob->num_bins; j++)
-                if (!vp_put_vector_in_bin_safe(vp_prob, sortmap[i], j)) break;
-            if (j >= vp_prob->num_bins) return 1;
+                if (!vp_put_item_in_bin_safe(vp_soln, sortmap[i], j)) break;
+            if (j >= vp_prob->num_bins) break;
         }
         break;
         case BEST_FIT:
         for (i = 0; i < vp_prob->num_items; i++) {
             for (j = 0; j < vp_prob->num_bins; j++) {
-                if (vp_vector_can_fit_in_bin(vp_prob, sortmap[i], j)) {
-                    sumloads[j] = vp_compute_sum_load(vp_prob, j);
+                if (vp_item_can_fit_in_bin(vp_soln, sortmap[i], j)) {
+                    sumloads[j] = vp_compute_sum_load(vp_soln, j);
                 } else {
                     sumloads[j] = -1.0;
                 }
             }
-            j = array_argmax(sumloads, vp_prob->num_bins);
+            j = double_array_argmax(sumloads, vp_prob->num_bins);
             if (sumloads[j] < 0.0 || 
-                vp_put_vector_in_bin_safe(vp_prob, sortmap[i], j)) return 1;
+                vp_put_item_in_bin_safe(vp_soln, sortmap[i], j)) break;
         }
         break;
         default:
@@ -84,20 +53,19 @@ int solve_vp_problem_FITD(vp_problem vp_prob, int args[],
         exit(1);
     }
 
-    return 0;
+    return vp_soln;
 }
 
 // solve vp problem using Permutation Pack or Choose Pack
-// FIXME: the comparitor doesn't really need to do all this playing around
-// with pointers since we don't sort the vectors with qsort anymore...
-int solve_vp_problem_MCB(vp_problem vp_prob, int args[], 
+// FIXME: don't like all the 0 indexes...
+vp_solution_t solve_vp_problem_MCB(vp_problem_t vp_prob, int args[], 
     qsort_cmp_func *cmp_item_idxs)
 {
     int i, j;
     int isCP = args[0];
-    int w = MIN(args[1], vp_prob->num_dims);
+    int w = MIN(args[1], vp_prob->items[0]->num_dims);
 
-    int dim_perm[vp_prob->num_dims];
+    int dim_perm[vp_prob->bins[0]->num_dims];
     int vector_dims[vp_prob->num_items][w];
 
     int unmapped_vectors[vp_prob->num_items];
@@ -105,24 +73,22 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int args[],
 
     int b, v, best_v, best_v_idx, cmp_val;
 
-    int bin_dim_positions[vp_prob->num_dims];
+    int bin_dim_positions[vp_prob->bins[0]->num_dims];
 
     int *v_perm, *best_perm, *tmp_perm;
 
-    struct vector_array_t va;
-
-    va.num_dims = vp_prob->num_dims;
+    vp_solution_t vp_soln = new_vp_solution(vp_prob);
 
     // initialize dim_perm
-    for (j = 0; j < vp_prob->num_dims; j++) {
+    for (j = 0; j < vp_prob->bins[0]->num_dims; j++) {
         dim_perm[j] = j;
     }
 
     // initialize unmapped vectors and vector dims
     for (i = 0; i < vp_prob->num_items; i++) {
         unmapped_vectors[i] = i;
-        qsort_r(dim_perm, vp_prob->num_dims, sizeof(int), 
-            vp_prob->items[i], rcmp_float_array_idxs);
+        qsort_r(dim_perm, vp_prob->items[i]->num_dims, sizeof(int), 
+            vp_prob->items[i]->totals, rcmp_double_array_idxs);
         for (j = 0; j < w; j++) vector_dims[i][j] = dim_perm[j];
     }
 
@@ -140,7 +106,7 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int args[],
         // Find the first vector that can be put in the bin
         for (i = 0; i < num_unmapped_vectors; i++) {
             v = unmapped_vectors[i];
-            if (vp_vector_can_fit_in_bin(vp_prob, v, b)) {
+            if (vp_item_can_fit_in_bin(vp_soln, v, b)) {
                 best_v = v;
                 best_v_idx = i;
                 break;
@@ -151,7 +117,7 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int args[],
         // there are at least 2 vectors before doing all the PP/CP stuff
         for (i++; i < num_unmapped_vectors; i++) {
             v = unmapped_vectors[i];
-            if (vp_vector_can_fit_in_bin(vp_prob, v, b)) {
+            if (vp_item_can_fit_in_bin(vp_soln, v, b)) {
                 break;
             }
         }
@@ -159,8 +125,8 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int args[],
         if (i < num_unmapped_vectors) {
 
             // compute bin permutation
-            qsort_r(dim_perm, vp_prob->num_dims, sizeof(int), 
-                vp_prob->loads[b], cmp_float_array_idxs);
+            qsort_r(dim_perm, vp_prob->bins[b]->num_dims, sizeof(int), 
+                vp_soln->loads[b], cmp_double_array_idxs);
 
 #if 0
             printf("sort of dims: (");
@@ -182,7 +148,7 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int args[],
                     j++;
                 }
             }
-            while (j < vp_prob->num_dims) {
+            while (j < vp_prob->bins[b]->num_dims) {
                 bin_dim_positions[dim_perm[j]] = j;
                 j++;
             }
@@ -203,7 +169,7 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int args[],
 
                 v = unmapped_vectors[i];
 
-                if (!vp_vector_can_fit_in_bin(vp_prob, v, b)) continue;
+                if (!vp_item_can_fit_in_bin(vp_soln, v, b)) continue;
 
                 // apply bin key inverse to vector keys to get how they permute 
                 // the bin key in the first w elements...
@@ -216,17 +182,9 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int args[],
 
                 cmp_val = cmp_int_arrays_lex(w, v_perm, best_perm);
 
-                va.vectors = vp_prob->items;
-
-#ifdef NO_QSORT_R
-                global_qsort_vptr = &va;
                 if (cmp_val < 0 || (0 == cmp_val && 
-                    cmp_item_idxs(&v, &best_v) < 0))
-#else
-                if (cmp_val < 0 || (0 == cmp_val && 
-                    cmp_item_idxs(&va, &v, &best_v) < 0))
-#endif
-                {
+                    QSORT_CMP_CALL(cmp_item_idxs, vp_prob->items, &v, &best_v) 
+                    < 0)) {
 #if 0
                     printf("bin state is: (");
                     for (j = 0; j < vp_prob->num_dims; j++) {
@@ -271,7 +229,7 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int args[],
         // if we found a vector put it in the bin and delete from the list of
         // unmapped vectors -- otherwise advance to the next bin
         if (best_v > -1) {
-            vp_put_vector_in_bin(vp_prob, best_v, b);
+            vp_put_item_in_bin(vp_soln, best_v, b);
             num_unmapped_vectors--;
             unmapped_vectors[best_v_idx] = 
                 unmapped_vectors[num_unmapped_vectors];
@@ -284,19 +242,23 @@ int solve_vp_problem_MCB(vp_problem vp_prob, int args[],
     free(v_perm);
     free(best_perm);
 
-    return num_unmapped_vectors;
+    if (0 == num_unmapped_vectors) vp_soln->success = 1;
+
+    return vp_soln;
 }
     
-void VP_solver(flexsched_solution flex_soln, 
-    int (*solve_vp_problem)(vp_problem, int[], qsort_cmp_func), 
+flexsched_solution_t VP_solver(flexsched_problem_t flex_prob, 
+    vp_solution_t (*solve_vp_problem)(vp_problem_t, int[], qsort_cmp_func), 
     int args[], qsort_cmp_func cmp_item_idxs) 
 {
+    flexsched_solution_t flex_soln = new_flexsched_solution(flex_prob);
     double yield, yieldlb, yieldub, best_yield;
-    vp_problem vp_prob = NULL;
+    vp_problem_t vp_prob = NULL;
+    vp_solution_t vp_soln = NULL;
     int i, status;
 
     yieldlb = 0.0;
-    yieldub = compute_LP_bound();
+    yieldub = 1.0;
 
     best_yield = -1.0;
     yield = 0.0;
@@ -305,36 +267,43 @@ void VP_solver(flexsched_solution flex_soln,
         yield = (yieldub + yieldlb) / 2.0;
 
         // Generate the VP instance
-        vp_prob = new_vp_problem(yield);
+        vp_prob = new_vp_problem(flex_prob, yield);
+
+        vp_soln = solve_vp_problem(vp_prob, args, cmp_item_idxs);
 
         // Solve the VP instance
-        if (solve_vp_problem(vp_prob, args, cmp_item_idxs)) {
-            yieldub = yield;
-        } else {
+        if (vp_soln->success) {
             yieldlb = yield;
             // Save the computed mapping
             flex_soln->success = 1;
             for (i = 0; i < flex_prob->num_services; i++) {
-                flex_soln->mapping[i] = vp_prob->mapping[i];
-                flex_soln->scaled_yields[i] = yield;
+                flex_soln->mapping[i] = vp_soln->mapping[i];
+                flex_soln->yields[i] = yield;
             }
+        } else {
+            yieldub = yield;
         }
 
+        free_vp_solution(vp_soln);
         free_vp_problem(vp_prob);
 
     }
+
+    return flex_soln;
 }
 
 /* 
  * VP_scheduler() 
  */
-flexsched_solution VP_scheduler(char *name, char **options)
+flexsched_solution_t VP_scheduler(
+    flexsched_problem_t flex_prob, char *name, char **options)
 {
-    int (*solve_vp_problem)(vp_problem, int [], qsort_cmp_func) = NULL;
+    vp_solution_t (*solve_vp_problem)(vp_problem_t, int [], qsort_cmp_func) ;
     int args[2] = {0, 0};
     qsort_cmp_func *cmp_item_idxs = NULL;
-    flexsched_solution flex_soln = new_flexsched_solution();
     char **opt;
+
+    solve_vp_problem = NULL;
 
     // could be a little more rigorous here...
     for (opt = options; *opt; opt++) {
@@ -359,7 +328,5 @@ flexsched_solution VP_scheduler(char *name, char **options)
         }
     }
 
-    VP_solver(flex_soln, solve_vp_problem, args, cmp_item_idxs);
-    
-    return flex_soln;
+    return VP_solver(flex_prob, solve_vp_problem, args, cmp_item_idxs);
 }

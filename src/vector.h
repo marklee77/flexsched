@@ -2,22 +2,20 @@
 #define VECTOR_H
 
 typedef struct vp_vector_s {
+    int num_dims;
     double *units;
     double *totals;
 } *vp_vector_t;
 
-typedef struct vp_vector_array_s {
-    int num_vectors;
-    int num_dims;
-    vp_vector_t *vectors;
-} *vp_vector_array_t;
-
 typedef struct vp_problem_s {
-    vp_vector_array_t items;
-    vp_vector_array_t bins;
+    int num_items;
+    int num_bins;
+    vp_vector_t *items;
+    vp_vector_t *bins;
 } *vp_problem_t; 
 
 typedef struct vp_solution_s {
+    int success;
     vp_problem_t prob;
     int *mapping;
     double **loads; // useful scratch variable
