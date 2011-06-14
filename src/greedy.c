@@ -156,6 +156,7 @@ int GREEDY_pick_server_P2(flexsched_solution_t flex_soln, int service)
             sumresource += compute_available_resource_fast(flex_soln, i, j) -
                 flex_soln->prob->services[service]->total_rigid_requirements[j];
         }
+        printf("%d\t%.3f\t%.3f\n", i, sumload, sumresource);
         if (sumresource != 0.0) {
             ratio = sumload / sumresource;
             if (picked < 0 || ratio < minratio) {

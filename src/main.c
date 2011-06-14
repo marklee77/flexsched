@@ -15,9 +15,9 @@ struct implemented_scheduler_s implemented_schedulers[] = {
     {"RRND",            LPROUNDING_scheduler,      1},
     {"RRNZ",            LPROUNDING_scheduler,      1},
     {"VP",              VP_scheduler,              1},
-/*
     {"HVP",             HVP_scheduler,             1},
     {"METAHVP",         HVP_scheduler,             1},
+/*
     {"OLDMETAHVP",      METAHVP_scheduler,         1},
 */
     {NULL, NULL, 0}

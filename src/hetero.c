@@ -4,7 +4,7 @@
 #define FIRST_FIT 0
 #define BEST_FIT 1
 
-int solve_hvp_problem_FITD(vp_problem vp_prob, int args[], 
+vp_solution_t solve_hvp_problem_FITD(vp_problem_t vp_prob, int args[], 
     qsort_cmp_func *cmp_item_idxs, qsort_cmp_func *cmp_bin_idxs)
 {
     int fit_type = args[0];
@@ -13,23 +13,20 @@ int solve_hvp_problem_FITD(vp_problem vp_prob, int args[],
     int v, b;
     int item_sortmap[vp_prob->num_items];
     int bin_sortmap[vp_prob->num_bins];
-    float sumcapacities[vp_prob->num_bins];
-    struct vector_array_t va;
-    va.num_dims = vp_prob->num_dims;
+    double sumcapacities[vp_prob->num_bins];
+    vp_solution_t vp_soln = new_vp_solution(vp_prob);
 
     // set up vector sort map
     for (i = 0; i < vp_prob->num_items; i++) item_sortmap[i] = i;
-    va.vectors = vp_prob->items;
     if (cmp_item_idxs) {
-        qsort_r(item_sortmap, vp_prob->num_items, sizeof(int), &va, 
+        qsort_r(item_sortmap, vp_prob->num_items, sizeof(int), vp_prob->items, 
             cmp_item_idxs);
     }
 
     // set up bin sort map
     for (j = 0; j < vp_prob->num_bins; j++) bin_sortmap[j] = j;
-    va.vectors = vp_prob->capacities;
     if (cmp_bin_idxs) {
-        qsort_r(bin_sortmap, vp_prob->num_bins, sizeof(int), &va, 
+        qsort_r(bin_sortmap, vp_prob->num_bins, sizeof(int), vp_prob->bins, 
             cmp_bin_idxs);
     }
 
@@ -37,18 +34,16 @@ int solve_hvp_problem_FITD(vp_problem vp_prob, int args[],
     switch(fit_type) {
         case FIRST_FIT:
 
-
         for (i = 0; i < vp_prob->num_items; i++) {
             v = item_sortmap[i];
             for (j = 0; j < vp_prob->num_bins; j++) {
                 b = bin_sortmap[j];
-                if (!vp_put_vector_in_bin_safe(vp_prob, v, b)) break;
+                if (!vp_put_item_in_bin_safe(vp_soln, v, b)) break;
             }
-            if (j >= vp_prob->num_bins) return 1;
+            if (j >= vp_prob->num_bins) return vp_soln; 
             if (reshuffle_bins && cmp_bin_idxs) {
-                va.vectors = vp_prob->capacities;
-                qsort_r(bin_sortmap, vp_prob->num_bins, sizeof(int), &va, 
-                    cmp_bin_idxs);
+                qsort_r(bin_sortmap, vp_prob->num_bins, sizeof(int), 
+                    vp_prob->bins, cmp_bin_idxs);
             }
         }
         break;
@@ -57,19 +52,24 @@ int solve_hvp_problem_FITD(vp_problem vp_prob, int args[],
             v = item_sortmap[i];
             for (j = 0; j < vp_prob->num_bins; j++) {
                 b = bin_sortmap[j];
-                if (vp_vector_can_fit_in_bin(vp_prob, v, b)) {
+                if (vp_item_can_fit_in_bin(vp_soln, v, b)) {
                     sumcapacities[j] = 0.0;
                     for (k = 0; k < vp_prob->num_dims; k++) {
-                        sumcapacities[j] += vp_prob->capacities[b][k];
+                        sumcapacities[j] += 
+                            vp_prob->bins[b]->totals[k] - vp_soln->loads[b][k];
                     }
                 } else {
                     sumcapacities[j] = 1.0 * vp_prob->num_dims + 1.0;
                 }
             }
-            j = array_argmin(sumcapacities, vp_prob->num_bins);
+            j = double_array_argmin(sumcapacities, vp_prob->num_bins);
             b = bin_sortmap[j];
             if (sumcapacities[j] > 1.0 * vp_prob->num_dims || 
-                vp_put_vector_in_bin_safe(vp_prob, v, b)) return 1;
+                vp_put_item_in_bin_safe(vp_soln, v, b)) return vp_soln;
+            if (reshuffle_bins && cmp_bin_idxs) {
+                qsort_r(bin_sortmap, vp_prob->num_bins, sizeof(int), 
+                    vp_prob->bins, cmp_bin_idxs);
+            }
         }
         break;
         default:
@@ -77,11 +77,12 @@ int solve_hvp_problem_FITD(vp_problem vp_prob, int args[],
         exit(1);
     }
 
-    return 0;
+    vp_soln->success = 1;
+    return vp_soln;
 }
 
 // solve vp problem using Permutation Pack or Choose Pack
-int solve_hvp_problem_MCB(vp_problem vp_prob, int args[],
+vp_solution_t solve_hvp_problem_MCB(vp_problem_t vp_prob, int args[],
     qsort_cmp_func *cmp_item_idxs, qsort_cmp_func *cmp_bin_idxs)
 {
     int i, j;
@@ -99,7 +100,7 @@ int solve_hvp_problem_MCB(vp_problem vp_prob, int args[],
 
     int b, v, best_v, best_v_idx, cmp_val;
 
-    float rescaled_item[vp_prob->num_dims];
+    double rescaled_item[vp_prob->num_dims];
 
     int bin_dim_ranks[vp_prob->num_dims];
 
@@ -109,8 +110,7 @@ int solve_hvp_problem_MCB(vp_problem vp_prob, int args[],
     int *open_bins = bin_idxs;
     int num_open_bins;
 
-    struct vector_array_t va;
-    va.num_dims = vp_prob->num_dims;
+    vp_solution_t vp_soln = new_vp_solution(vp_prob);
 
     // initialize dims
     for (j = 0; j < vp_prob->num_dims; j++) dims[j] = j;
@@ -122,7 +122,7 @@ int solve_hvp_problem_MCB(vp_problem vp_prob, int args[],
         for (i = 0; i < vp_prob->num_items; i++) {
             unmapped_vectors[i] = i;
             qsort_r(dims, vp_prob->num_dims, sizeof(int), 
-                vp_prob->items[i], rcmp_float_array_idxs);
+                vp_prob->items[i]->totals, rcmp_double_array_idxs);
             for (j = 0; j < w; j++) vector_dims[i][j] = dims[j];
         }
     }
@@ -133,8 +133,8 @@ int solve_hvp_problem_MCB(vp_problem vp_prob, int args[],
     }
 
     if (cmp_bin_idxs) {
-        va.vectors = vp_prob->capacities; 
-        qsort_r(open_bins, vp_prob->num_bins, sizeof(int), &va, cmp_bin_idxs);
+        qsort_r(open_bins, vp_prob->num_bins, sizeof(int), vp_prob->bins, 
+            cmp_bin_idxs);
     }
 
     // initialize pointers to v_perm and best_perm
@@ -154,7 +154,7 @@ int solve_hvp_problem_MCB(vp_problem vp_prob, int args[],
         // Find the first vector that can be put in the bin
         for (i = 0; i < num_unmapped_vectors; i++) {
             v = unmapped_vectors[i];
-            if (vp_vector_can_fit_in_bin(vp_prob, v, b)) {
+            if (vp_item_can_fit_in_bin(vp_soln, v, b)) {
                 best_v = v;
                 best_v_idx = i;
                 break;
@@ -165,7 +165,7 @@ int solve_hvp_problem_MCB(vp_problem vp_prob, int args[],
         // there are at least 2 vectors before doing all the PP/CP stuff
         for (i++; i < num_unmapped_vectors; i++) {
             v = unmapped_vectors[i];
-            if (vp_vector_can_fit_in_bin(vp_prob, v, b)) {
+            if (vp_item_can_fit_in_bin(vp_soln, v, b)) {
                 break;
             }
         }
@@ -174,7 +174,7 @@ int solve_hvp_problem_MCB(vp_problem vp_prob, int args[],
 
             // compute bin permutation
             qsort_r(dims, vp_prob->num_dims, sizeof(int), 
-                vp_prob->capacities[b], rcmp_float_array_idxs);
+                vp_soln->capacities[b], rcmp_double_array_idxs);
 
             // compute bin dim positions
             bin_dim_ranks[dims[0]] = 0; // make sure j > 0
@@ -188,8 +188,8 @@ int solve_hvp_problem_MCB(vp_problem vp_prob, int args[],
             if (equalize_dims) {
                 // we assume j > 0 from above...
                 while (j < vp_prob->num_dims) {
-                    if (vp_prob->capacities[b][dims[j-1]] == 
-                        vp_prob->capacities[b][dims[j]]) {
+                    if (vp_soln->capacities[b][dims[j-1]] == 
+                        vp_soln->capacities[b][dims[j]]) {
                         bin_dim_ranks[dims[j]] = bin_dim_ranks[dims[j-1]];
                     } else {
                         bin_dim_ranks[dims[j]] = bin_dim_ranks[dims[j-1]]+1;
@@ -209,10 +209,11 @@ int solve_hvp_problem_MCB(vp_problem vp_prob, int args[],
             if (rescale_items) {
                 for (j = 0; j < vp_prob->num_dims; j++) {
                     rescaled_item[j] = 
-                        vp_prob->items[best_v][j] / vp_prob->capacities[b][j];
+                        vp_prob->items[best_v]->totals[j] /
+                        vp_prob->bins[b]->totals[j];
                 }
                 qsort_r(dims, vp_prob->num_dims, sizeof(int), 
-                    rescaled_item, rcmp_float_array_idxs);
+                    rescaled_item, rcmp_double_array_idxs);
                 for (j = 0; j < w; j++) 
                     best_perm[j] = bin_dim_ranks[dims[j]];
             } else {
@@ -230,17 +231,18 @@ int solve_hvp_problem_MCB(vp_problem vp_prob, int args[],
 
                 v = unmapped_vectors[i];
 
-                if (!vp_vector_can_fit_in_bin(vp_prob, v, b)) continue;
+                if (!vp_item_can_fit_in_bin(vp_soln, v, b)) continue;
 
                 // apply bin key inverse to vector keys to get how they permute 
                 // the bin key in the first w elements...
                 if (rescale_items) {
                     for (j = 0; j < vp_prob->num_dims; j++) {
                         rescaled_item[j] = 
-                            vp_prob->items[v][j] / vp_prob->capacities[b][j];
+                            vp_prob->items[v]->totals[j] /
+                            vp_prob->bins[b]->totals[j];
                     }
                     qsort_r(dims, vp_prob->num_dims, sizeof(int), 
-                        rescaled_item, rcmp_float_array_idxs);
+                        rescaled_item, rcmp_double_array_idxs);
                     for (j = 0; j < w; j++) 
                         v_perm[j] = bin_dim_ranks[dims[j]];
                 } else {
@@ -253,16 +255,10 @@ int solve_hvp_problem_MCB(vp_problem vp_prob, int args[],
                 }
 
                 cmp_val = cmp_int_arrays_lex(w, v_perm, best_perm);
-                va.vectors = vp_prob->items;
 
-#ifdef NO_QSORT_R
-                global_qsort_vptr = &va;
                 if (cmp_val < 0 || (0 == cmp_val && cmp_item_idxs &&
-                    cmp_item_idxs(&v, &best_v) < 0))
-#else
-                if (cmp_val < 0 || (0 == cmp_val && cmp_item_idxs &&
-                    cmp_item_idxs(&va, &v, &best_v) < 0))
-#endif
+                    QSORT_CMP_CALL(cmp_item_idxs, vp_prob->items, &v, &best_v) 
+                    < 0))
                 {
 #if 0
                     printf("bin state is: (");
@@ -308,13 +304,12 @@ int solve_hvp_problem_MCB(vp_problem vp_prob, int args[],
         // if we found a vector put it in the bin and delete from the list of
         // unmapped vectors -- otherwise advance to the next bin
         if (best_v > -1) {
-            vp_put_vector_in_bin(vp_prob, best_v, b);
+            vp_put_item_in_bin(vp_soln, best_v, b);
             num_unmapped_vectors--;
             unmapped_vectors[best_v_idx] = 
                 unmapped_vectors[num_unmapped_vectors];
             if (reshuffle_bins && cmp_bin_idxs) {
-                va.vectors = vp_prob->capacities;
-                qsort_r(open_bins, num_open_bins, sizeof(int), &va, 
+                qsort_r(open_bins, num_open_bins, sizeof(int), vp_prob->bins, 
                     cmp_bin_idxs);
             }
         } else {
@@ -327,50 +322,49 @@ int solve_hvp_problem_MCB(vp_problem vp_prob, int args[],
     free(v_perm);
     free(best_perm);
 
-    return num_unmapped_vectors;
+    if (!num_unmapped_vectors) vp_soln->success = 1;
+
+    return vp_soln;
 }
     
-int solve_hvp_problem_META(vp_problem vp_prob, int notargs[], 
+vp_solution_t solve_hvp_problem_META(vp_problem_t vp_prob, int notargs[],
     qsort_cmp_func cmp_item_idxs, qsort_cmp_func cmp_bin_idxs)
 {
 
-    int (*solve_hvp_problem)(vp_problem, int[], qsort_cmp_func, qsort_cmp_func);
     int args[5] = {0, 0, 0, 0, 0};
     char *sortnames[] = { "ALEX", "AMAX", "ASUM", "AMAXRATIO", "AMAXDIFF",
         "DLEX", "DMAX", "DSUM", "DMAXRATIO", "DMAXDIFF", NULL };
     char **item_sort_name, **bin_sort_name;
     int isCP, isR, isS, isE, w;
     int i;
+    vp_solution_t vp_soln = NULL;
 
-    solve_hvp_problem = solve_hvp_problem_FITD;
     for (isCP = 0; isCP <= 1; isCP++) {
         args[0] = isCP;
         for (item_sort_name = sortnames; *item_sort_name; item_sort_name++) {
             for (bin_sort_name = sortnames; *bin_sort_name; bin_sort_name++) {
                 for (isR = 0; isR <= 1; isR++) {
                     args[1] = isR;
-                    if(solve_hvp_problem(vp_prob, args, 
+                    vp_soln = solve_hvp_problem_FITD(vp_prob, args, 
                         get_vp_cmp_func(*item_sort_name), 
-                        get_vp_cmp_func(*bin_sort_name))) {
-                        reset_vp_problem(vp_prob);
-                    } else {
-                        sprintf(vp_prob->misc_output, "%s %s %s%s", 
-                            isCP ? "BF" : "FF", *item_sort_name, *bin_sort_name, 
+                        get_vp_cmp_func(*bin_sort_name));
+                    if (vp_soln && vp_soln->success) {
+                        sprintf(vp_soln->misc_output, "%s %s %s%s", 
+                            isCP ? "BF" : "FF", *item_sort_name, *bin_sort_name,
                             isR  ? " R" : "");
-                        return 0;
+                        return vp_soln;
                     }
+                    free_vp_solution(vp_soln);
                 }
             }
         }
     }
 
-    solve_hvp_problem = solve_hvp_problem_MCB;
     for (isCP = 0; isCP <= 1; isCP++) {
         args[0] = isCP;
         for (item_sort_name = sortnames; *item_sort_name; item_sort_name++) {
             for (bin_sort_name = sortnames; *bin_sort_name; bin_sort_name++) {
-                for (w = 0; w <= flex_prob->num_rigid + flex_prob->num_fluid; 
-                    w++) {
+                for (w = 0; w <= vp_prob->num_dims; w++) {
                     args[4] = w;
                     for (isR = 0; isR <= 1; isR++) {
                         args[1] = isR;
@@ -378,19 +372,19 @@ int solve_hvp_problem_META(vp_problem vp_prob, int notargs[],
                             args[2] = isS;
                             for (isE = 0; isE <= 1; isE++) {
                                 args[3] = isE;
-                                if(solve_hvp_problem(vp_prob, args, 
+                                vp_soln = solve_hvp_problem_MCB(vp_prob, args, 
                                     get_vp_cmp_func(*item_sort_name), 
-                                    get_vp_cmp_func(*bin_sort_name))) {
-                                    reset_vp_problem(vp_prob);
-                                } else {
-                                    sprintf(vp_prob->misc_output, 
+                                    get_vp_cmp_func(*bin_sort_name)); 
+                                if (vp_soln && vp_soln->success) {
+                                    sprintf(vp_soln->misc_output, 
                                         "%s %s %s W%d%s%s%s", 
                                         isCP ? "CP" : "PP", 
                                         *item_sort_name, *bin_sort_name, w, 
                                         isR  ? " R" : "", isS  ? " S" : "", 
                                         isE  ? " E" : "");
-                                    return 0;
+                                    return vp_soln;
                                 }
+                                free_vp_solution(vp_soln);
                             }
                         }
                     }
@@ -399,21 +393,23 @@ int solve_hvp_problem_META(vp_problem vp_prob, int notargs[],
         }
     }
 
-    return 1;
+    return new_vp_solution(vp_prob);
 }
 
 // FIXME: this is mostly the same as VP_solver, which isn't super clean...
-flexsched_solution HVP_solver(
-    int (*solve_hvp_problem)(vp_problem, int[], qsort_cmp_func, qsort_cmp_func),
-    int args[], qsort_cmp_func cmp_item_idxs, qsort_cmp_func cmp_bin_idxs) 
+flexsched_solution_t HVP_solver(flexsched_problem_t flex_prob,
+    vp_solution_t (*solve_hvp_problem)(vp_problem_t, int[], qsort_cmp_func, 
+        qsort_cmp_func), int args[], qsort_cmp_func cmp_item_idxs, 
+    qsort_cmp_func cmp_bin_idxs) 
 {
-    flexsched_solution flex_soln = new_flexsched_solution();
+    flexsched_solution_t flex_soln = new_flexsched_solution(flex_prob);
     double yield, yieldlb, yieldub, best_yield;
-    vp_problem vp_prob = NULL;
+    vp_problem_t vp_prob = NULL;
+    vp_solution_t vp_soln = NULL;
     int i, status;
 
     yieldlb = 0.0;
-    yieldub = compute_LP_bound();
+    yieldub = 1.0;
 
     best_yield = -1.0;
     yield = 0.0;
@@ -422,22 +418,24 @@ flexsched_solution HVP_solver(
         yield = (yieldub + yieldlb) / 2.0;
 
         // Generate the VP instance
-        vp_prob = new_vp_problem(yield);
+        vp_prob = new_vp_problem(flex_prob, yield);
 
         // Solve the VP instance
-        if (solve_hvp_problem(vp_prob, args, cmp_item_idxs, cmp_bin_idxs)) {
-            yieldub = yield;
-        } else {
+        vp_soln = solve_hvp_problem(vp_prob, args, cmp_item_idxs, cmp_bin_idxs);
+        if (vp_soln->success) {
             yieldlb = yield;
             // Save the computed mapping
             flex_soln->success = 1;
             for (i = 0; i < flex_prob->num_services; i++) {
-                flex_soln->mapping[i] = vp_prob->mapping[i];
-                flex_soln->scaled_yields[i] = yield;
+                flex_soln->mapping[i] = vp_soln->mapping[i];
+                flex_soln->yields[i] = yield;
             }
-            strcpy(flex_soln->misc_output, vp_prob->misc_output);
+            strcpy(flex_soln->misc_output, vp_soln->misc_output);
+        } else {
+            yieldub = yield;
         }
 
+        free_vp_solution(vp_soln);
         free_vp_problem(vp_prob);
 
     }
@@ -448,15 +446,16 @@ flexsched_solution HVP_solver(
 /* 
  * HVP_scheduler() 
  */
-flexsched_solution HVP_scheduler(char *name, char **options)
+flexsched_solution_t HVP_scheduler(
+    flexsched_problem_t flex_prob, char *name, char **options)
 {
-    int (*solve_hvp_problem)(vp_problem, int [], qsort_cmp_func, qsort_cmp_func)
+    vp_solution_t (*solve_hvp_problem)(vp_problem_t, int [], 
+        qsort_cmp_func, qsort_cmp_func)
         = NULL;
     int args[5] = {0, 0, 0, 0, 0};
     qsort_cmp_func *cmp_tmp = NULL;
     qsort_cmp_func *cmp_item_idxs = NULL;
     qsort_cmp_func *cmp_bin_idxs = NULL;
-    flexsched_solution flex_soln = NULL;
     char **opt;
 
     // could be a little more rigorous here...
@@ -498,12 +497,11 @@ flexsched_solution HVP_scheduler(char *name, char **options)
         solve_hvp_problem = solve_hvp_problem_META;
     }
 
-    flex_soln = HVP_solver(solve_hvp_problem, args, cmp_item_idxs, 
+    return HVP_solver(flex_prob, solve_hvp_problem, args, cmp_item_idxs, 
         cmp_bin_idxs);
-
-    return flex_soln;
 }
 
+#if 0
 flexsched_solution METAHVP_scheduler(char *name, char **options)
 {
 
@@ -520,7 +518,7 @@ flexsched_solution METAHVP_scheduler(char *name, char **options)
 
     int isCP, isR, isS, isE, w;
 
-    float minyield, avgyield, maxminyield, maxavgyield;
+    double minyield, avgyield, maxminyield, maxavgyield;
 
     int i;
 
@@ -630,3 +628,4 @@ flexsched_solution METAHVP_scheduler(char *name, char **options)
 
     return flex_soln;
 }
+#endif

@@ -150,6 +150,7 @@ flexsched_solution_t LPBOUND_scheduler(
     for (i = 0; i < flex_prob->num_services; i++) {
         flex_soln->yields[i] = objval - EPSILON;
     }
+    free_linear_program(lp);
     return flex_soln;
 }
 
@@ -168,22 +169,22 @@ flexsched_solution_t MILP_scheduler(
         strcat(flex_soln->misc_output, "T");
     }
 
-    if (status) return flex_soln;
-
-    flex_soln->success = 1;
-
-    // Retrieve the mapping
-    for (i = 0; i < flex_prob->num_services; i++) {
-        for (j = 0; j < flex_prob->num_servers; j++) {
-            if(get_mip_col_val(lp, PLACEMENT_LP_COL_E_IJ)) {
-                flex_soln->mapping[i] = j;
-                flex_soln->yields[i] = 
-                    get_col_val(lp, PLACEMENT_LP_COL_Y_IJ) - EPSILON;
-                break;
+    if (!status) {
+        flex_soln->success = 1;
+        // Retrieve the mapping
+        for (i = 0; i < flex_prob->num_services; i++) {
+            for (j = 0; j < flex_prob->num_servers; j++) {
+                if(get_mip_col_val(lp, PLACEMENT_LP_COL_E_IJ)) {
+                    flex_soln->mapping[i] = j;
+                    flex_soln->yields[i] = 
+                        get_col_val(lp, PLACEMENT_LP_COL_Y_IJ) - EPSILON;
+                    break;
+                }
             }
         }
     }
 
+    free_linear_program(lp);
     return flex_soln;
 }
 
@@ -229,7 +230,10 @@ flexsched_solution_t LPROUNDING_solver(
         }
 
         // If nobody works, forget it
-        if (!num_feasible_servers) return;
+        if (!num_feasible_servers) {
+            free_linear_program(lp);
+            return flex_soln;
+        }
 
         // Pick a probability
         select_over_weight = total_weight * (rand() / (RAND_MAX + 1.0));
@@ -240,7 +244,10 @@ flexsched_solution_t LPROUNDING_solver(
             if (x >= select_over_weight) break;
         }
 
-        if (j >= num_feasible_servers) return;
+        if (j >= num_feasible_servers) {
+            free_linear_program(lp);
+            return flex_soln;
+        }
 
         // set the mappings appropriately
         put_service_on_server_fast(flex_soln, i, feasible_servers[j]);
@@ -248,6 +255,7 @@ flexsched_solution_t LPROUNDING_solver(
     }
 
     free_global_resource_availabilities_and_loads(flex_prob);
+    free_linear_program(lp);
     flex_soln->success = 1;
     return;
 }
@@ -350,5 +358,6 @@ void maximize_average_yield_given_minimum(
     for (i = 0; i < flex_soln->prob->num_services; i++) {
         flex_soln->yields[i] = get_col_val(lp, ALLOC_LP_COL_Y_I) - EPSILON;
     }
+    free_linear_program(lp);
     return;
 }

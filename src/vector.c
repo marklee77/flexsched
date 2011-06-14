@@ -22,8 +22,10 @@ vp_solution_t solve_vp_problem_FITD(vp_problem_t vp_prob, int args[],
 
     // set up vector sort map
     for (i = 0; i < vp_prob->num_items; i++) sortmap[i] = i;
-    qsort_r(sortmap, vp_prob->num_items, sizeof(int), vp_prob->items, 
-        cmp_item_idxs);
+    if (cmp_item_idxs) {
+        qsort_r(sortmap, vp_prob->num_items, sizeof(int), vp_prob->items, 
+            cmp_item_idxs);
+    }
 
     // Place vectors into bins
     switch(fit_type) {
@@ -31,7 +33,7 @@ vp_solution_t solve_vp_problem_FITD(vp_problem_t vp_prob, int args[],
         for (i = 0; i < vp_prob->num_items; i++) {
             for (j = 0; j < vp_prob->num_bins; j++)
                 if (!vp_put_item_in_bin_safe(vp_soln, sortmap[i], j)) break;
-            if (j >= vp_prob->num_bins) break;
+            if (j >= vp_prob->num_bins) return vp_soln;
         }
         break;
         case BEST_FIT:
@@ -45,7 +47,7 @@ vp_solution_t solve_vp_problem_FITD(vp_problem_t vp_prob, int args[],
             }
             j = double_array_argmax(sumloads, vp_prob->num_bins);
             if (sumloads[j] < 0.0 || 
-                vp_put_item_in_bin_safe(vp_soln, sortmap[i], j)) break;
+                vp_put_item_in_bin_safe(vp_soln, sortmap[i], j)) return vp_soln;
         }
         break;
         default:
@@ -53,6 +55,7 @@ vp_solution_t solve_vp_problem_FITD(vp_problem_t vp_prob, int args[],
         exit(1);
     }
 
+    vp_soln->success = 1;
     return vp_soln;
 }
 
@@ -63,9 +66,9 @@ vp_solution_t solve_vp_problem_MCB(vp_problem_t vp_prob, int args[],
 {
     int i, j;
     int isCP = args[0];
-    int w = MIN(args[1], vp_prob->items[0]->num_dims);
+    int w = MIN(args[1], vp_prob->num_dims);
 
-    int dim_perm[vp_prob->bins[0]->num_dims];
+    int dim_perm[vp_prob->num_dims];
     int vector_dims[vp_prob->num_items][w];
 
     int unmapped_vectors[vp_prob->num_items];
@@ -73,14 +76,14 @@ vp_solution_t solve_vp_problem_MCB(vp_problem_t vp_prob, int args[],
 
     int b, v, best_v, best_v_idx, cmp_val;
 
-    int bin_dim_positions[vp_prob->bins[0]->num_dims];
+    int bin_dim_positions[vp_prob->num_dims];
 
     int *v_perm, *best_perm, *tmp_perm;
 
     vp_solution_t vp_soln = new_vp_solution(vp_prob);
 
     // initialize dim_perm
-    for (j = 0; j < vp_prob->bins[0]->num_dims; j++) {
+    for (j = 0; j < vp_prob->num_dims; j++) {
         dim_perm[j] = j;
     }
 
@@ -242,7 +245,7 @@ vp_solution_t solve_vp_problem_MCB(vp_problem_t vp_prob, int args[],
     free(v_perm);
     free(best_perm);
 
-    if (0 == num_unmapped_vectors) vp_soln->success = 1;
+    if (!num_unmapped_vectors) vp_soln->success = 1;
 
     return vp_soln;
 }
