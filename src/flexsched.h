@@ -10,7 +10,7 @@
 /****************************/
 /**** PARAMETER CONSTANTS ***/
 /****************************/
-#define EPSILON 0.00001
+#define EPSILON 0.0001
 #define RANDOM_SEED 6337
 
 #define BEST_FIT 1
@@ -73,39 +73,36 @@ typedef struct flexsched_solution_s {
 flexsched_solution_t new_flexsched_solution(flexsched_problem_t);
 void free_flexsched_solution(flexsched_solution_t);
 
+void put_service_on_server(flexsched_solution_t, int, int);
 int service_can_fit_on_server(flexsched_solution_t, int, int);
+double compute_allocated_resource(flexsched_solution_t, int, int);
+double compute_available_resource(flexsched_solution_t, int, int);
+double compute_fluid_load(flexsched_solution_t, int, int);
 
 void initialize_global_resource_availabilities_and_loads(flexsched_problem_t);
 void free_global_resource_availabilities_and_loads(flexsched_problem_t);
-void put_service_on_server(flexsched_solution_t, int, int);
 int service_can_fit_on_server_fast(flexsched_solution_t, int, int);
+void put_service_on_server_fast(flexsched_solution_t, int, int);
+double compute_available_resource_fast(flexsched_solution_t, int, int);
+double compute_fluid_load_fast(flexsched_solution_t, int, int);
 
-
-double compute_available_resource(flexsched_solution_t, int, int);
 double compute_minimum_yield(flexsched_solution_t);
 double compute_average_yield(flexsched_solution_t);
 double compute_utilization(flexsched_solution_t);
 int sanity_check(flexsched_solution_t);
 
+double double_array_sum(double *, int);
+double double_array_max(double *, int);
+double double_array_min(double *, int);
+int double_array_argmax(double *, int);
+int double_array_argmin(double *, int);
+
+void maximize_minimum_yield_on_server(flexsched_solution_t, int);
+void maximize_average_yield_on_given_minimum(flexsched_solution_t, double);
+void maximize_minimum_then_average_yield(flexsched_solution_t);
+
 /*
 double compute_LP_bound();
-double array_sum(float *, int);
-float array_max(float *, int);
-float array_min(float *, int);
-int array_argmax(float *, int);
-float compute_sum_server_load(flexsched_solution, int, const char *);
-float compute_sum_server_load_fast(int, const char *);
-float compute_server_load_in_dimension(
-    flexsched_solution, int, const char*, int);
-float compute_server_load_in_dimension_fast(int, const char*, int);
-int service_can_fit_on_server(flexsched_solution, int, int);
-int service_can_fit_on_server_fast(int, int);
-void maximize_minimum_yield_on_server(flexsched_solution, int);
-void maximize_minimum_yield(flexsched_solution);
-void maximize_average_yield_on_server_given_minimum(
-    flexsched_solution, int, float);
-void maximize_minimum_then_average_yield(flexsched_solution);
-float compute_server_sum_alloc(flexsched_solution, int);
 */
 
 /* Scheduler function prototypes */
@@ -125,12 +122,12 @@ flexsched_solution METAHVP_scheduler(char *, char **);
 
 // QSORT_R
 #ifdef NO_QSORT_R
-#define QSORT_CMP_FUNC_DECL(name) 
+#define QSORT_CMP_FUNC_DECL(name) \
     int name(const void *xvp, const void *yvp)
-typedef (int)(const void *, const void *) qsort_cmp_func;
+typedef int(qsort_cmp_func)(const void *, const void *); 
 extern void *qsort_thunk_vp;
 #define qsort_r(base, nel, width, thunk, compar) \
-    (qsort_thunk_vp = thunk; qsort(base, nel, width, compar))
+    (qsort_thunk_vp = thunk, qsort(base, nel, width, compar))
 #define QSORT_CMP_CALL(cmp_items, thunk, x, y) \
     (qsort_thunk_vp = thunk, cmp_items(x, y))
 

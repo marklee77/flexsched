@@ -5,19 +5,20 @@
 #define INTEGER 0
 
 #define LP_IGNORE 666.0
+#define LP_MILP_MAX_SECONDS 12*60*60
 
 #ifdef CPLEX
 
 #include <ilcplex/cplex.h>
 
 typedef struct linear_program_s {
-    CPXENVptr *env;
-    CPXLPptr *lp;
+    CPXENVptr env;
+    CPXLPptr lp;
 } *linear_program_t;
 
 #else
 
-#define GLPK_TIME_LIMIT 10*60*1000
+#define GLPK_TIME_LIMIT (LP_MILP_MAX_SECONDS*1000)
 
 #include <glpk.h>
 

@@ -102,8 +102,8 @@ linear_program_t create_placement_lp(
     for (i = 0; i < flex_prob->num_services; i++) {
         for (j = 0; j < flex_prob->num_servers; j++) {
             for (k = 0; k < flex_prob->num_resources; k++) {
-                set_row_params(lp, row, LP_IGNORE, 
-                    flex_prob->servers[j]->unit_capacities[k]);
+                set_row_params(lp, row, LP_IGNORE,
+                    flex_prob->servers[j]->unit_capacities[k] - EPSILON);
                 ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_E_IJ; 
                 ra[elt] = flex_prob->services[i]->unit_rigid_requirements[k]; 
                 elt++;
@@ -118,7 +118,7 @@ linear_program_t create_placement_lp(
     for (j = 0; j < flex_prob->num_servers; j++) {
         for (k = 0; k < flex_prob->num_resources; k++) {
             set_row_params(lp, row, LP_IGNORE, 
-                flex_prob->servers[j]->total_capacities[k]);
+                flex_prob->servers[j]->total_capacities[k] - EPSILON);
             for (i = 0; i < flex_prob->num_services; i++) {
                 ia[elt] = row; ja[elt] = PLACEMENT_LP_COL_E_IJ; 
                 ra[elt] = flex_prob->services[i]->total_rigid_requirements[k]; 
@@ -163,10 +163,16 @@ flexsched_solution_t MILP_scheduler(
     int status = 1;
     double val;
 
+#ifdef CPLEX
+    strcpy(flex_soln->misc_output, "CPLEX");
+#else
+    strcpy(flex_soln->misc_output, "GLPK");
+#endif
+
     status = solve_linear_program(lp, INTEGER);
 
     if (status == 2) {
-        strcat(flex_soln->misc_output, "T");
+        strcat(flex_soln->misc_output, " T");
     }
 
     if (!status) {
@@ -191,24 +197,30 @@ flexsched_solution_t MILP_scheduler(
 /*
  *      - RRND: LPROUNDING(0.0)
  *      - RRNZ: LPROUNDING(xxx)
+ *
+ * FIXME: bad flow, kind of spaghetti-like
  */
 flexsched_solution_t LPROUNDING_solver(
     flexsched_problem_t flex_prob, double min_weight)
 {
     flexsched_solution_t flex_soln = new_flexsched_solution(flex_prob);
-    int i, j;
+    int i, j, k;
     double weights[flex_prob->num_servers];
     double x, total_weight, select_over_weight;
     int feasible_servers[flex_prob->num_servers];
     double yields[flex_prob->num_servers];
     int num_feasible_servers;
+    int repeat, couldreduce;
 
     // Create the placement problem in rational mode
     // and solve it to compute rational mappings,
     // adding an epsilon to zero values
     linear_program_t lp = create_placement_lp(flex_prob, RATIONAL);
 
-    if (solve_linear_program(lp, RATIONAL)) return;
+    if (solve_linear_program(lp, RATIONAL)) {
+        free_linear_program(lp);
+        return flex_soln;
+    }
 
     srand(RANDOM_SEED);
     initialize_global_resource_availabilities_and_loads(flex_prob);
@@ -253,11 +265,32 @@ flexsched_solution_t LPROUNDING_solver(
         put_service_on_server_fast(flex_soln, i, feasible_servers[j]);
         flex_soln->yields[i] = yields[j];
     }
-
-    free_global_resource_availabilities_and_loads(flex_prob);
     free_linear_program(lp);
+    free_global_resource_availabilities_and_loads(flex_prob);
+
+    // a little hacky, but adjust the final solution...
+    do {
+        repeat = 0;
+        for (j = 0; j < flex_prob->num_servers; j++) {
+            for (k = 0; k < flex_prob->num_resources; k++) {
+                if (compute_allocated_resource(flex_soln, j, k) >
+                        flex_prob->servers[j]->total_capacities[k]) {
+                    repeat = 1;
+                    couldreduce = 0;
+                    for (i = 0; i < flex_prob->num_services; i++) {
+                        if (flex_soln->mapping[i] != j || flex_soln->yields[i]
+                                <= EPSILON) continue;
+                        couldreduce = 1;
+                        flex_soln->yields[i] -= EPSILON;
+                    } 
+                    if (!couldreduce) return flex_soln; // can't fix problem
+                }
+            }
+        }
+    } while (repeat);
+
     flex_soln->success = 1;
-    return;
+    return flex_soln;
 }
 
 flexsched_solution_t LPROUNDING_scheduler(
@@ -316,7 +349,8 @@ linear_program_t create_allocation_lp(
         for (k = 0; k < flex_soln->prob->num_resources; k++) {
             set_row_params(lp, row, LP_IGNORE, flex_soln->prob->servers[
                 flex_soln->mapping[i]]->unit_capacities[k] -
-                flex_soln->prob->services[i]->unit_rigid_requirements[k]);
+                flex_soln->prob->services[i]->unit_rigid_requirements[k] - 
+                EPSILON);
             ia[elt] = row; ja[elt] = ALLOC_LP_COL_Y_I; 
             ra[elt] = flex_soln->prob->services[i]->unit_fluid_needs[k];
             elt++; row++;
@@ -327,7 +361,7 @@ linear_program_t create_allocation_lp(
     for (j = 0; j < flex_soln->prob->num_servers; j++) {
         for (k = 0; k < flex_soln->prob->num_resources; k++) {
             set_row_params(lp, ALLOC_LP_ROW_B_JK, LP_IGNORE, 
-                compute_available_resource(flex_soln, j, k));
+                compute_available_resource(flex_soln, j, k) - EPSILON);
         }
     }
 
@@ -359,5 +393,6 @@ void maximize_average_yield_given_minimum(
         flex_soln->yields[i] = get_col_val(lp, ALLOC_LP_COL_Y_I) - EPSILON;
     }
     free_linear_program(lp);
+
     return;
 }

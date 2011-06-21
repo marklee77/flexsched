@@ -156,7 +156,6 @@ int GREEDY_pick_server_P2(flexsched_solution_t flex_soln, int service)
             sumresource += compute_available_resource_fast(flex_soln, i, j) -
                 flex_soln->prob->services[service]->total_rigid_requirements[j];
         }
-        printf("%d\t%.3f\t%.3f\n", i, sumload, sumresource);
         if (sumresource != 0.0) {
             ratio = sumload / sumresource;
             if (picked < 0 || ratio < minratio) {
@@ -275,14 +274,13 @@ void GREEDY_compute_mapping(flexsched_solution_t flex_soln,
     int i, j; 
     int service, server;
 
-
     for (i = 0; i < flex_soln->prob->num_services; i++) {
         service = sortmap[i];
         server = pick_server(flex_soln, service);
 
         if (-1 == server) return;
         
-        put_service_on_server(flex_soln, service, server);
+        put_service_on_server_fast(flex_soln, service, server);
 
     }
 

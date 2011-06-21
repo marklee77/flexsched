@@ -103,8 +103,8 @@ void free_flexsched_solution(flexsched_solution_t flex_soln)
 inline int unit_requirements_within_capacity_in_dim(
     flexsched_problem_t flex_prob, int service, int server, int dim)
 {
-    return flex_prob->services[service]->unit_rigid_requirements[dim] + EPSILON 
-        <= flex_prob->servers[server]->unit_capacities[dim];
+    return flex_prob->services[service]->unit_rigid_requirements[dim]
+        <= flex_prob->servers[server]->unit_capacities[dim] - EPSILON;
 }
 
 int unit_requirements_within_capacity(
@@ -123,7 +123,7 @@ inline int unit_allocation_at_yield_within_capacity_in_dim(flexsched_problem_t
 {
     return flex_prob->services[service]->unit_rigid_requirements[dim] +
         yield * flex_prob->services[service]->unit_fluid_needs[dim]
-        <= flex_prob->servers[server]->unit_capacities[dim];
+        < flex_prob->servers[server]->unit_capacities[dim] + EPSILON;
 }
 
 int unit_allocation_at_yield_within_capacity(
@@ -145,10 +145,25 @@ void put_service_on_server(
     return;
 }
 
+double compute_allocated_resource(
+    flexsched_solution_t flex_soln, int server, int dim)
+{
+    double allocated_resource = EPSILON;
+    int i;
+    for (i = 0; i < flex_soln->prob->num_services; i++) {
+        if (flex_soln->mapping[i] != server) continue;
+        allocated_resource +=
+            flex_soln->prob->services[i]->total_rigid_requirements[dim] +
+            flex_soln->yields[i]*
+                flex_soln->prob->services[i]->total_fluid_needs[dim];
+    }
+    return allocated_resource;
+}
+
 double compute_available_resource(flexsched_solution_t flex_soln, int server, 
     int dim)
 {
-    double allocated_resource = 0.0;
+    double allocated_resource = EPSILON; 
     int i;
 
     for (i = 0; i < flex_soln->prob->num_services; i++) {
@@ -157,8 +172,8 @@ double compute_available_resource(flexsched_solution_t flex_soln, int server,
             flex_soln->prob->services[i]->total_rigid_requirements[dim];
     }
 
-    return flex_soln->prob->servers[server]->total_capacities[dim] - 
-        allocated_resource; 
+    return MAX(0.0, flex_soln->prob->servers[server]->total_capacities[dim] - 
+        allocated_resource); 
 }
 
 double compute_fluid_load(flexsched_solution_t flex_soln, int server, int dim)
@@ -177,8 +192,8 @@ double compute_fluid_load(flexsched_solution_t flex_soln, int server, int dim)
 int total_requirements_within_available_capacity_in_dim(
     flexsched_solution_t flex_soln, int service, int server, int dim)
 {
-    return flex_soln->prob->services[service]->total_rigid_requirements[dim] + 
-        EPSILON <= compute_available_resource(flex_soln, server, dim);
+    return flex_soln->prob->services[service]->total_rigid_requirements[dim]
+        <= compute_available_resource(flex_soln, server, dim) - EPSILON;
 }
 
 int service_can_fit_on_server(
@@ -270,8 +285,8 @@ inline double compute_fluid_load_fast(
 inline int total_requirements_within_available_capacity_in_dim_fast(
     flexsched_solution_t flex_soln, int service, int server, int dim)
 {
-    return flex_soln->prob->services[service]->total_rigid_requirements[dim] + 
-        EPSILON <= global_available_resources[server][dim];
+    return flex_soln->prob->services[service]->total_rigid_requirements[dim]
+        <= global_available_resources[server][dim] - EPSILON;
 }
 
 int service_can_fit_on_server_fast(
@@ -291,19 +306,35 @@ int service_can_fit_on_server_fast(
 void maximize_minimum_yield_on_server(
     flexsched_solution_t flex_soln, int server)
 {
-    int i;
+    int i, j;
     double load;
     double minyield = 1.0;
 
+    // yield limited by total needs
     for (i = 0; i < flex_soln->prob->num_resources; i++) {
         load = compute_fluid_load(flex_soln, server, i);
-        if (load > 0.0) minyield = MIN(minyield, 
-            compute_available_resource(flex_soln, server, i) / load - EPSILON);
+        if (load > 0.0) { 
+            minyield = MIN(minyield, 
+                compute_available_resource(flex_soln, server, i) / load);
+        }
+    }
+
+    // yield limited by unit needs
+    for (i = 0; i < flex_soln->prob->num_services; i++) {
+        if (flex_soln->mapping[i] != server) continue;
+        for (j = 0; j < flex_soln->prob->num_resources; j++) {
+            if (flex_soln->prob->services[i]->unit_fluid_needs[j] > 0.0) {
+                minyield = MIN(minyield, 
+                    (flex_soln->prob->servers[server]->unit_capacities[j] -
+                      flex_soln->prob->services[i]->unit_rigid_requirements[j])
+                    / flex_soln->prob->services[i]->unit_fluid_needs[j]);
+            }
+        }
     }
 
     for (i = 0; i < flex_soln->prob->num_services; i++) {
         if (flex_soln->mapping[i] != server) continue;
-        flex_soln->yields[i] = minyield;
+        flex_soln->yields[i] = minyield - EPSILON;
     }
 
     return;
@@ -366,7 +397,7 @@ double compute_utilization(flexsched_solution_t flex_soln)
                 flex_soln->prob->num_resources);
     }
 
-    if (total_capacity <= 0) return 1.0;
+    if (total_capacity <= 0.0) return 1.0;
 
     for (i = 0; i < flex_soln->prob->num_services; i++) {
         total_alloc +=
@@ -374,7 +405,7 @@ double compute_utilization(flexsched_solution_t flex_soln)
                 flex_soln->prob->services[i]->total_rigid_requirements, 
                 flex_soln->prob->num_resources) + 
             flex_soln->yields[i] * 
-                double_array_sum(flex_soln->prob->services[i]->total_fluid_needs,
+              double_array_sum(flex_soln->prob->services[i]->total_fluid_needs,
                     flex_soln->prob->num_resources);
     }
 
@@ -409,6 +440,8 @@ int sanity_check(flexsched_solution_t flex_soln)
         }
     }
 
+    if (retval) return retval;
+
     // initialize allocated resources
     for (i = 0; i < flex_soln->prob->num_servers; i++) {
         for (j = 0; j < flex_soln->prob->num_resources; j++) {
@@ -423,8 +456,11 @@ int sanity_check(flexsched_solution_t flex_soln)
                 i, flex_soln->yields[i], flex_soln->mapping[i], j))
             {
                 fprintf(stderr, 
-                    "Error: Allocation of service %d to server %d with yield %.3f exceeds unit capacity in resource dimension %d (%.3f/%.3f).\n", 
+                    "Error: Allocation of service %d to server %d with yield %.3f exceeds unit capacity in resource dimension %d (%.3f + %.3f = %.3f/%.3f).\n", 
                     i, flex_soln->mapping[i], flex_soln->yields[i], j,
+                    flex_soln->prob->services[i]->unit_rigid_requirements[j],
+                    flex_soln->yields[i] * 
+                        flex_soln->prob->services[i]->unit_fluid_needs[j], 
                     flex_soln->prob->services[i]->unit_rigid_requirements[j] + 
                         flex_soln->yields[i] * 
                         flex_soln->prob->services[i]->unit_fluid_needs[j], 
@@ -440,10 +476,10 @@ int sanity_check(flexsched_solution_t flex_soln)
 
     for (i = 0; i < flex_soln->prob->num_servers; i++) {
         for (j = 0; j < flex_soln->prob->num_resources; j++) {
-            if (flex_soln->prob->servers[i]->total_capacities[j] < 
+            if (flex_soln->prob->servers[i]->total_capacities[j] + EPSILON <= 
                 allocated_resources[i][j]) {
                 fprintf(stderr, 
-                    "Error: Total resource allocation on server %d exceeds capacity in dimension %d (%.3f/%.3f).\n",
+                    "Error: Total resource allocation on server %d exceeds capacity in dimension %d (%.6f/%.6f).\n",
                     i, j, allocated_resources[i][j], 
                     flex_soln->prob->servers[i]->total_capacities[j]);
                 retval = 1;

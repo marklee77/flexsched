@@ -7,17 +7,19 @@
 linear_program_t new_linear_program(int num_cols, int num_rows)
 {
     int status = 0;
-    linear_program_t lp = malloc(sizeof(linear_program_s));
+    linear_program_t lp = malloc(sizeof(struct linear_program_s));
     lp->env = CPXopenCPLEX(&status);
-    lp->lp = CPXcreateprob(lp->env, &status, "")
+    lp->lp = CPXcreateprob(lp->env, &status, "");
     CPXnewcols(lp->env, lp->lp, num_cols, NULL, NULL, NULL, NULL, NULL);
-    CPXnewrows(env, lp, num_rows, NULL, NULL, NULL, NULL);
+    CPXnewrows(lp->env, lp->lp, num_rows, NULL, NULL, NULL, NULL);
     CPXchgobjsen(lp->env, lp->lp, CPX_MAX);
     return lp;
 }
 
 void free_linear_program(linear_program_t lp)
 {
+    CPXfreeprob(lp->env, &(lp->lp));
+    CPXcloseCPLEX(&(lp->env));
     return;
 }
 
@@ -69,14 +71,21 @@ void load_matrix(linear_program_t lp, int elts, int ia[], int ja[], double ra[])
     return;
 }
 
-int solve_linear_program(linear_program_t lp, int rational) {
+int solve_linear_program(linear_program_t lp, int rational)
 {
     int status;
+    double val;
+
+    //CPXwriteprob(lp->env, lp->lp, "myprob.lp", "LP");
 
     if (rational) {
+        CPXchgprobtype(lp->env, lp->lp, CPXPROB_LP);
         status = CPXlpopt(lp->env, lp->lp);
     } else {
-        status = CPXmipopt(lp->env, lp->lp);
+        CPXchgprobtype(lp->env, lp->lp, CPXPROB_MILP);
+        CPXsetintparam(lp->env, CPX_PARAM_TILIM, LP_MILP_MAX_SECONDS);
+        CPXmipopt(lp->env, lp->lp);
+        status = CPXgetobjval(lp->env, lp->lp, &val);
     }
 
     return status;
@@ -89,14 +98,14 @@ double get_obj_val(linear_program_t lp) {
 }
 
 int get_mip_col_val(linear_program_t lp, int col) {
-    double &val;
-    CPXgetx(env, lp, &val, col - 1, col - 1);
+    double val;
+    CPXgetx(lp->env, lp->lp, &val, col, col);
     return (int)(val + EPSILON);
 }
 
 double get_col_val(linear_program_t lp, int col) {
-    double &val;
-    CPXgetx(env, lp, &val, col - 1, col - 1);
+    double val;
+    CPXgetx(lp->env, lp->lp, &val, col, col);
     return val;
 }
 

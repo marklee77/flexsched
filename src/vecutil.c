@@ -71,6 +71,7 @@ vp_solution_t new_vp_solution(vp_problem_t vp_prob)
     vp_solution_t vp_soln = (vp_solution_t)malloc(sizeof(struct vp_solution_s));
     vp_soln->prob = vp_prob;
     vp_soln->success = 0;
+    vp_soln->misc_output[0] = '\0';
     vp_soln->mapping = (int *)calloc(vp_prob->num_items, sizeof(int));
     for (i = 0; i< vp_prob->num_items; i++) {
         vp_soln->mapping[i] = -1;

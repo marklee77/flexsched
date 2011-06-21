@@ -98,8 +98,8 @@ void deactivate_unneeded_schedulers(call_scheduler_t *schedulers, char *file)
         for (sched = schedulers; *sched; sched++) {
             if (!strcmp(strtok(buffer, "|"), (*sched)->string)) {
                 (*sched)->active = 0;
-                fprintf(stderr, "Warning: no need to re-run algorithm '%s'\n", 
-                    (*sched)->string);
+                //fprintf(stderr, "Warning: no need to re-run algorithm '%s'\n", 
+                //    (*sched)->string);
             }
         }
     }
@@ -358,17 +358,23 @@ int main(int argc, char *argv[])
 
             // Sanity check the allocation
             if ((*sched)->sanitycheck && sanity_check(flex_soln)) {
-                fprintf(stderr,"Invalid allocation\n");
+                fprintf(stderr, 
+                    "Invalid allocation by algorithm %s on file %s\n",
+                    (*sched)->string, argv[2]);
                 exit(1);
             }
 
-            non_optimized_average_yield = compute_average_yield(flex_soln);
-            non_optimized_utilization = compute_utilization(flex_soln);
-            maximize_minimum_then_average_yield(flex_soln);
+            if (strcmp((*sched)->name, "LPBOUND")) {
+                non_optimized_average_yield = compute_average_yield(flex_soln);
+                non_optimized_utilization = compute_utilization(flex_soln);
+                maximize_minimum_then_average_yield(flex_soln);
+            }
 
             // Re-Sanity check the allocation
             if ((*sched)->sanitycheck && sanity_check(flex_soln)) {
-                fprintf(stderr,"Invalid allocation\n");
+                fprintf(stderr, 
+                    "Invalid optimized allocation by algorithm %s on file %s\n",
+                    (*sched)->string, argv[2]);
                 exit(1);
             }
 
@@ -380,7 +386,7 @@ int main(int argc, char *argv[])
   
         // Print output
         fprintf(output, "%s|", (*sched)->string);
-        if (!strcmp((*sched)->name,"LPBOUND")) {
+        if (!strcmp((*sched)->name, "LPBOUND")) {
             fprintf(output, "%.3f|", compute_minimum_yield(flex_soln));
             fprintf(output, "%.3f|", -1.0);
             fprintf(output, "%.3f|", -1.0);
