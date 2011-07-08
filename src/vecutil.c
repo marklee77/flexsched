@@ -298,10 +298,12 @@ qsort_cmp_func *get_vp_cmp_func(char *cmp_name) {
         return rcmp_vector_array_idxs_maxratio;
     } else if (!strcmp(cmp_name, "DMAXDIFF")) {
         return rcmp_vector_array_idxs_maxdiff;
+    } else if (!strcmp(cmp_name, "NONE")) {
+        return NULL;
     } else {
         fprintf(stderr, "Unknown comparison '%s'\n", cmp_name);
         exit(1);
-    }   
+    }
 
     return NULL;
 }

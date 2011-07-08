@@ -249,6 +249,52 @@ vp_solution_t solve_vp_problem_MCB(vp_problem_t vp_prob, int args[],
 
     return vp_soln;
 }
+
+vp_solution_t solve_vp_problem_META(vp_problem_t vp_prob, int notargs[],
+    qsort_cmp_func cmp_item_idxs)
+{
+    int args[2] = {0, 0};
+    char *sortnames[] = {"ALEX", "AMAX", "ASUM", "AMAXRATIO", "AMAXDIFF", 
+                         "DLEX", "DMAX", "DSUM", "DMAXRATIO", "DMAXDIFF", 
+                         NULL };
+    char **item_sort_name;
+    int isCP, w;
+    int i;
+    vp_solution_t vp_soln = NULL;
+
+    for (isCP = 0; isCP <= 1; isCP++) {
+        args[0] = isCP;
+        for (item_sort_name = sortnames; *item_sort_name; item_sort_name++) {
+            vp_soln = solve_vp_problem_FITD(vp_prob, args, 
+                get_vp_cmp_func(*item_sort_name));
+            if (vp_soln && vp_soln->success) {
+                sprintf(vp_soln->misc_output, "%s %s", isCP ? "BF" : "FF", 
+                    *item_sort_name);
+                return vp_soln;
+            }
+            free_vp_solution(vp_soln);
+        }
+    }
+
+    for (isCP = 0; isCP <= 1; isCP++) {
+        args[0] = isCP;
+        for (item_sort_name = sortnames; *item_sort_name; item_sort_name++) {
+            for (w = 0; w <= vp_prob->num_dims; w++) {
+                args[1] = w;
+                vp_soln = solve_vp_problem_MCB(vp_prob, args,
+                    get_vp_cmp_func(*item_sort_name));
+                if (vp_soln && vp_soln->success) {
+                    sprintf(vp_soln->misc_output, "%s %s W%d", 
+                        isCP ? "CP" : "PP", *item_sort_name, w);
+                    return vp_soln;
+                }
+                free_vp_solution(vp_soln);
+            }
+        }
+    }
+
+    return new_vp_solution(vp_prob);
+}
     
 flexsched_solution_t VP_solver(flexsched_problem_t flex_prob, 
     vp_solution_t (*solve_vp_problem)(vp_problem_t, int[], qsort_cmp_func), 
@@ -283,6 +329,7 @@ flexsched_solution_t VP_solver(flexsched_problem_t flex_prob,
                 flex_soln->mapping[i] = vp_soln->mapping[i];
                 flex_soln->yields[i] = yield;
             }
+            strcpy(flex_soln->misc_output, vp_soln->misc_output);
         } else {
             yieldub = yield;
         }
@@ -331,5 +378,10 @@ flexsched_solution_t VP_scheduler(
         }
     }
 
+    if (!strcmp(name, "METAVP")) {
+        solve_vp_problem = solve_vp_problem_META;
+    }
+
     return VP_solver(flex_prob, solve_vp_problem, args, cmp_item_idxs);
 }
+
