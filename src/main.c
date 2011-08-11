@@ -18,6 +18,7 @@ struct implemented_scheduler_s implemented_schedulers[] = {
     {"METAVP",          VP_scheduler,              1},
     {"HVP",             HVP_scheduler,             1},
     {"METAHVP",         HVP_scheduler,             1},
+    {"METAHVPLIGHT",    HVP_scheduler,             1},
 /*
     {"OLDMETAHVP",      METAHVP_scheduler,         1},
 */
@@ -37,7 +38,7 @@ typedef struct call_scheduler_s {
  *    Create a NULL-terminated list of scheduler names from
  *    the list command-line argument
  */
-call_scheduler_t * parse_scheduler_list(char *scheduler_list) {
+static call_scheduler_t * parse_scheduler_list(char *scheduler_list) {
     const char *ssep = " \t", *osep = "_";
     call_scheduler_t *schedulers = NULL, *sched;
     char *s;
@@ -86,7 +87,7 @@ call_scheduler_t * parse_scheduler_list(char *scheduler_list) {
     return schedulers;
 }
 
-void deactivate_unneeded_schedulers(call_scheduler_t *schedulers, char *file)
+static void deactivate_unneeded_schedulers(call_scheduler_t *schedulers, char *file)
 {
     FILE *f;
     char buffer[1024];
@@ -110,7 +111,7 @@ void deactivate_unneeded_schedulers(call_scheduler_t *schedulers, char *file)
     return;
 }
 
-server_t new_server(int num_resources) {
+static server_t new_server(int num_resources) {
     server_t server;
     int i;
 
@@ -134,7 +135,7 @@ server_t new_server(int num_resources) {
     return server;
 }
 
-service_t new_service(int num_resources) {
+static service_t new_service(int num_resources) {
     service_t service;
     int i;
 
@@ -170,7 +171,7 @@ service_t new_service(int num_resources) {
     return service;
 }
     
-flexsched_problem_t new_flexsched_problem(FILE *input) {
+static flexsched_problem_t new_flexsched_problem(FILE *input, FILE *estimates) {
     flexsched_problem_t flex_prob;
     int i, j;
 
@@ -217,7 +218,7 @@ flexsched_problem_t new_flexsched_problem(FILE *input) {
     return flex_prob;
 }
 
-void free_server(server_t server) {
+static void free_server(server_t server) {
     if (!server) return;
     free(server->unit_capacities);
     free(server->total_capacities);
@@ -225,7 +226,7 @@ void free_server(server_t server) {
     return;
 }
 
-void free_service(service_t service) {
+static void free_service(service_t service) {
     if (!service) return;
     free(service->unit_rigid_requirements);
     free(service->unit_fluid_needs);
@@ -235,7 +236,7 @@ void free_service(service_t service) {
     return;
 }
 
-void free_flexsched_problem(flexsched_problem_t flex_prob) {
+static void free_flexsched_problem(flexsched_problem_t flex_prob) {
     int i;
 
     if (!flex_prob) return;
@@ -253,7 +254,7 @@ void free_flexsched_problem(flexsched_problem_t flex_prob) {
 
 int main(int argc, char *argv[])
 {
-    FILE *input, *output;
+    FILE *input, *output, *estimates;
     call_scheduler_t *schedulers, *sched;
 
     int i, j;
@@ -293,54 +294,23 @@ int main(int argc, char *argv[])
 	    output = stdout;
     } else {
         deactivate_unneeded_schedulers(schedulers, argv[3]);
-	    if (!(output = fopen(argv[3],"a"))) {
+	    if (!(output = fopen(argv[3], "a"))) {
 	        fprintf(stderr, "Can't open file '%s' for writing/appending\n", 
                 argv[3]);
 	        exit(1);
 	    }
     }
 
-    flex_prob = new_flexsched_problem(input);
+    if (argc < 5) {
+        estimates = NULL;
+    } else if (!(estimates = fopen(argv[4], "r"))) {
+	    fprintf(stderr, "Can't open file '%s' for reading\n", argv[2]);
+	    exit(1);
+    }
+
+    flex_prob = new_flexsched_problem(input, estimates);
 
     fclose(input);
-
-#if 0
-    printf("FlexSched Solver\n");
-    printf("servers: %d services: %d\n", flex_prob->num_servers,
-        flex_prob->num_services);
-    printf("total resources:");
-    for (j = 0; j < flex_prob->num_rigid; j++) {
-        total = 0.0;
-        for(i = 0; i < flex_prob->num_servers; i++) {
-            total += flex_prob->rigid_capacities[i][j];
-        }
-        printf(" %.3f", total);
-    }
-    for (j = 0; j < flex_prob->num_fluid; j++) {
-        total = 0.0;
-        for(i = 0; i < flex_prob->num_servers; i++) {
-            total += flex_prob->fluid_capacities[i][j];
-        }
-        printf(" %.3f", total);
-    }
-    printf("\n");
-    printf("total requirements:");
-    for (j = 0; j < flex_prob->num_rigid; j++) {
-        total = 0.0;
-        for(i = 0; i < flex_prob->num_services; i++) {
-            total += flex_prob->rigid_needs[i][j];
-        }
-        printf(" %.3f", total);
-    }
-    for (j = 0; j < flex_prob->num_fluid; j++) {
-        total = 0.0;
-        for(i = 0; i < flex_prob->num_services; i++) {
-            total += flex_prob->fluid_needs[i][j];
-        }
-        printf(" %.3f", total);
-    }
-    printf("\n");
-#endif
 
     for (sched = schedulers; *sched; sched++) {
 

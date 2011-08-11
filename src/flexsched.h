@@ -126,17 +126,19 @@ flexsched_solution METAHVP_scheduler(char *, char **);
     int name(const void *xvp, const void *yvp)
 typedef int(qsort_cmp_func)(const void *, const void *); 
 extern void *qsort_thunk_vp;
-#define qsort_r(base, nel, width, thunk, compar) \
-    (qsort_thunk_vp = thunk, qsort(base, nel, width, compar))
-#define QSORT_CMP_CALL(cmp_items, thunk, x, y) \
-    (qsort_thunk_vp = thunk, cmp_items(x, y))
+#define QSORT_R(base, nel, width, thunk, compar) \
+    ((compar) ? (qsort_thunk_vp = thunk, qsort(base, nel, width, compar)) : 0)
+#define QSORT_CMP_CALL(compar, thunk, x, y) \
+    ((compar) ? (qsort_thunk_vp = thunk, compar(x, y)) : 0)
 
 #else
 #define QSORT_CMP_FUNC_DECL(name) \
     int name(void *qsort_thunk_vp, const void *xvp, const void *yvp)
 typedef int(qsort_cmp_func)(void *, const void *, const void *); 
-#define QSORT_CMP_CALL(cmp_items, thunk, x, y) \
-    cmp_items(thunk, x, y)
+#define QSORT_R(base, nel, width, thunk, compar) \
+    ((compar) ? (qsort_r(base, nel, width, thunk, compar)) : 0)
+#define QSORT_CMP_CALL(compar, thunk, x, y) \
+    ((compar) ? compar(thunk, x, y) : 0)
 
 #endif
 

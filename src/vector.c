@@ -23,7 +23,7 @@ vp_solution_t solve_vp_problem_FITD(vp_problem_t vp_prob, int args[],
     // set up vector sort map
     for (i = 0; i < vp_prob->num_items; i++) sortmap[i] = i;
     if (cmp_item_idxs) {
-        qsort_r(sortmap, vp_prob->num_items, sizeof(int), vp_prob->items, 
+        QSORT_R(sortmap, vp_prob->num_items, sizeof(int), vp_prob->items, 
             cmp_item_idxs);
     }
 
@@ -90,7 +90,7 @@ vp_solution_t solve_vp_problem_MCB(vp_problem_t vp_prob, int args[],
     // initialize unmapped vectors and vector dims
     for (i = 0; i < vp_prob->num_items; i++) {
         unmapped_vectors[i] = i;
-        qsort_r(dim_perm, vp_prob->items[i]->num_dims, sizeof(int), 
+        QSORT_R(dim_perm, vp_prob->items[i]->num_dims, sizeof(int), 
             vp_prob->items[i]->totals, rcmp_double_array_idxs);
         for (j = 0; j < w; j++) vector_dims[i][j] = dim_perm[j];
     }
@@ -128,7 +128,7 @@ vp_solution_t solve_vp_problem_MCB(vp_problem_t vp_prob, int args[],
         if (i < num_unmapped_vectors) {
 
             // compute bin permutation
-            qsort_r(dim_perm, vp_prob->bins[b]->num_dims, sizeof(int), 
+            QSORT_R(dim_perm, vp_prob->bins[b]->num_dims, sizeof(int), 
                 vp_soln->loads[b], cmp_double_array_idxs);
 
 #if 0
@@ -255,8 +255,8 @@ vp_solution_t solve_vp_problem_META(vp_problem_t vp_prob, int notargs[],
 {
     int args[2] = {0, 0};
     char *sortnames[] = {"ALEX", "AMAX", "ASUM", "AMAXRATIO", "AMAXDIFF", 
-                         "DLEX", "DMAX", "DSUM", "DMAXRATIO", "DMAXDIFF", 
-                         NULL };
+                         "DLEX", "DMAX", "DSUM", "DMAXRATIO", "DMAXDIFF",
+                         "NONE", NULL };
     char **item_sort_name;
     int isCP, w;
     int i;

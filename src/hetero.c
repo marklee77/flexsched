@@ -19,14 +19,14 @@ vp_solution_t solve_hvp_problem_FITD(vp_problem_t vp_prob, int args[],
     // set up vector sort map
     for (i = 0; i < vp_prob->num_items; i++) item_sortmap[i] = i;
     if (cmp_item_idxs) {
-        qsort_r(item_sortmap, vp_prob->num_items, sizeof(int), vp_prob->items, 
+        QSORT_R(item_sortmap, vp_prob->num_items, sizeof(int), vp_prob->items, 
             cmp_item_idxs);
     }
 
     // set up bin sort map
     for (j = 0; j < vp_prob->num_bins; j++) bin_sortmap[j] = j;
     if (cmp_bin_idxs) {
-        qsort_r(bin_sortmap, vp_prob->num_bins, sizeof(int), vp_prob->bins, 
+        QSORT_R(bin_sortmap, vp_prob->num_bins, sizeof(int), vp_prob->bins, 
             cmp_bin_idxs);
     }
 
@@ -42,7 +42,7 @@ vp_solution_t solve_hvp_problem_FITD(vp_problem_t vp_prob, int args[],
             }
             if (j >= vp_prob->num_bins) return vp_soln; 
             if (reshuffle_bins && cmp_bin_idxs) {
-                qsort_r(bin_sortmap, vp_prob->num_bins, sizeof(int), 
+                QSORT_R(bin_sortmap, vp_prob->num_bins, sizeof(int), 
                     vp_prob->bins, cmp_bin_idxs);
             }
         }
@@ -67,7 +67,7 @@ vp_solution_t solve_hvp_problem_FITD(vp_problem_t vp_prob, int args[],
             if (sumcapacities[j] > 1.0 * vp_prob->num_dims || 
                 vp_put_item_in_bin_safe(vp_soln, v, b)) return vp_soln;
             if (reshuffle_bins && cmp_bin_idxs) {
-                qsort_r(bin_sortmap, vp_prob->num_bins, sizeof(int), 
+                QSORT_R(bin_sortmap, vp_prob->num_bins, sizeof(int), 
                     vp_prob->bins, cmp_bin_idxs);
             }
         }
@@ -121,7 +121,7 @@ vp_solution_t solve_hvp_problem_MCB(vp_problem_t vp_prob, int args[],
     } else {
         for (i = 0; i < vp_prob->num_items; i++) {
             unmapped_vectors[i] = i;
-            qsort_r(dims, vp_prob->num_dims, sizeof(int), 
+            QSORT_R(dims, vp_prob->num_dims, sizeof(int), 
                 vp_prob->items[i]->totals, rcmp_double_array_idxs);
             for (j = 0; j < w; j++) vector_dims[i][j] = dims[j];
         }
@@ -133,7 +133,7 @@ vp_solution_t solve_hvp_problem_MCB(vp_problem_t vp_prob, int args[],
     }
 
     if (cmp_bin_idxs) {
-        qsort_r(open_bins, vp_prob->num_bins, sizeof(int), vp_prob->bins, 
+        QSORT_R(open_bins, vp_prob->num_bins, sizeof(int), vp_prob->bins, 
             cmp_bin_idxs);
     }
 
@@ -173,7 +173,7 @@ vp_solution_t solve_hvp_problem_MCB(vp_problem_t vp_prob, int args[],
         if (i < num_unmapped_vectors) {
 
             // compute bin permutation
-            qsort_r(dims, vp_prob->num_dims, sizeof(int), 
+            QSORT_R(dims, vp_prob->num_dims, sizeof(int), 
                 vp_soln->capacities[b], rcmp_double_array_idxs);
 
             // compute bin dim positions
@@ -212,7 +212,7 @@ vp_solution_t solve_hvp_problem_MCB(vp_problem_t vp_prob, int args[],
                         vp_prob->items[best_v]->totals[j] /
                         vp_prob->bins[b]->totals[j];
                 }
-                qsort_r(dims, vp_prob->num_dims, sizeof(int), 
+                QSORT_R(dims, vp_prob->num_dims, sizeof(int), 
                     rescaled_item, rcmp_double_array_idxs);
                 for (j = 0; j < w; j++) 
                     best_perm[j] = bin_dim_ranks[dims[j]];
@@ -241,7 +241,7 @@ vp_solution_t solve_hvp_problem_MCB(vp_problem_t vp_prob, int args[],
                             vp_prob->items[v]->totals[j] /
                             vp_prob->bins[b]->totals[j];
                     }
-                    qsort_r(dims, vp_prob->num_dims, sizeof(int), 
+                    QSORT_R(dims, vp_prob->num_dims, sizeof(int), 
                         rescaled_item, rcmp_double_array_idxs);
                     for (j = 0; j < w; j++) 
                         v_perm[j] = bin_dim_ranks[dims[j]];
@@ -309,7 +309,7 @@ vp_solution_t solve_hvp_problem_MCB(vp_problem_t vp_prob, int args[],
             unmapped_vectors[best_v_idx] = 
                 unmapped_vectors[num_unmapped_vectors];
             if (reshuffle_bins && cmp_bin_idxs) {
-                qsort_r(open_bins, num_open_bins, sizeof(int), vp_prob->bins, 
+                QSORT_R(open_bins, num_open_bins, sizeof(int), vp_prob->bins, 
                     cmp_bin_idxs);
             }
         } else {
@@ -333,7 +333,7 @@ vp_solution_t solve_hvp_problem_META(vp_problem_t vp_prob, int notargs[],
 
     int args[5] = {0, 0, 0, 0, 0};
     char *sortnames[] = { "ALEX", "AMAX", "ASUM", "AMAXRATIO", "AMAXDIFF",
-        "DLEX", "DMAX", "DSUM", "DMAXRATIO", "DMAXDIFF", NULL };
+        "DLEX", "DMAX", "DSUM", "DMAXRATIO", "DMAXDIFF", "NONE", NULL };
     char **item_sort_name, **bin_sort_name;
     int isCP, isR, isS, isE, w;
     int i;
@@ -389,6 +389,55 @@ vp_solution_t solve_hvp_problem_META(vp_problem_t vp_prob, int notargs[],
                         }
                     }
                 }
+            }
+        }
+    }
+
+    return new_vp_solution(vp_prob);
+}
+
+vp_solution_t solve_hvp_problem_METALIGHT(vp_problem_t vp_prob, int notargs[],
+    qsort_cmp_func cmp_item_idxs, qsort_cmp_func cmp_bin_idxs)
+{
+
+    int args[5] = {0, 0, 0, 0, 0};
+    char *itemsorts[] = { "DMAX", "DSUM", NULL };
+    char *binsorts[] = { "AMAX", "ASUM", NULL };
+    char **item_sort_name, **bin_sort_name;
+    int isCP, isR, isS, isE, w;
+    int i;
+    vp_solution_t vp_soln = NULL;
+
+    args[0] = BEST_FIT;
+    args[1] = 0;
+    for (item_sort_name = itemsorts; *item_sort_name; item_sort_name++) {
+        vp_soln = solve_hvp_problem_FITD(vp_prob, args, 
+            get_vp_cmp_func(*item_sort_name), NULL);
+        if (vp_soln && vp_soln->success) { 
+            sprintf(vp_soln->misc_output, "BF %s NONE", *item_sort_name);
+            return vp_soln;
+        }
+        free_vp_solution(vp_soln);
+    }
+
+    // FIXME: don't really know about CP vs PP for only 2 dims...
+    args[0] = 0;
+    args[1] = 0;
+    args[2] = 0;
+    args[3] = 1;
+    for (item_sort_name = itemsorts; *item_sort_name; item_sort_name++) {
+        for (bin_sort_name = binsorts; *bin_sort_name; bin_sort_name++) {
+            for (w = 1; w < vp_prob->num_dims; w++) {
+                args[4] = w;
+                vp_soln = solve_hvp_problem_MCB(vp_prob, args, 
+                    get_vp_cmp_func(*item_sort_name), 
+                    get_vp_cmp_func(*bin_sort_name)); 
+                if (vp_soln && vp_soln->success) {
+                    sprintf(vp_soln->misc_output, "PP %s %s W%d E", 
+                        *item_sort_name, *bin_sort_name, w);
+                    return vp_soln;
+                }
+                free_vp_solution(vp_soln);
             }
         }
     }
@@ -495,6 +544,10 @@ flexsched_solution_t HVP_scheduler(
 
     if (!strcmp(name, "METAHVP")) {
         solve_hvp_problem = solve_hvp_problem_META;
+    }
+
+    if (!strcmp(name, "METAHVPLIGHT")) {
+        solve_hvp_problem = solve_hvp_problem_METALIGHT;
     }
 
     return HVP_solver(flex_prob, solve_hvp_problem, args, cmp_item_idxs, 
