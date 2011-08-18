@@ -47,6 +47,8 @@ typedef struct service_s {
     double *unit_fluid_needs;
     double *total_rigid_requirements;
     double *total_fluid_needs;
+    double *actual_unit_fluid_needs;
+    double *actual_total_fluid_needs;
 } *service_t;
 
 typedef struct flexsched_problem_s {
@@ -89,7 +91,7 @@ double compute_fluid_load_fast(flexsched_solution_t, int, int);
 double compute_minimum_yield(flexsched_solution_t);
 double compute_average_yield(flexsched_solution_t);
 double compute_utilization(flexsched_solution_t);
-int sanity_check(flexsched_solution_t);
+int sanity_check(flexsched_problem_t, int[], double[]);
 
 double double_array_sum(double *, int);
 double double_array_max(double *, int);

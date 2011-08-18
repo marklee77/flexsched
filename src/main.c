@@ -120,14 +120,12 @@ static server_t new_server(int num_resources) {
         exit(1);
     }
 
-    if (!(server->unit_capacities = (double *)calloc(num_resources,
-                    sizeof(double)))) {
+    if (!(server->unit_capacities = calloc(num_resources, sizeof(double)))) {
         fprintf(stderr, "Insufficient memory to allocate server unit capacities!\n");
         exit(1);
     }
 
-    if (!(server->total_capacities = (double *)calloc(num_resources,
-                    sizeof(double)))) {
+    if (!(server->total_capacities = calloc(num_resources, sizeof(double)))) {
         fprintf(stderr, "Insufficient memory to allocate server total capacities!\n");
         exit(1);
     }
@@ -144,27 +142,37 @@ static service_t new_service(int num_resources) {
         exit(1);
     }
 
-    if (!(service->unit_rigid_requirements = (double *)calloc(num_resources,
-                    sizeof(double)))) {
+    if (!(service->unit_rigid_requirements = calloc(num_resources, 
+        sizeof(double)))) {
         fprintf(stderr, "Insufficient memory to allocate service unit rigid_requirements!\n");
         exit(1);
     }
 
-    if (!(service->unit_fluid_needs = (double *)calloc(num_resources,
-                    sizeof(double)))) {
+    if (!(service->unit_fluid_needs = calloc(num_resources, sizeof(double)))) {
         fprintf(stderr, "Insufficient memory to allocate service unit fluid_needs!\n");
         exit(1);
     }
+    
+    if (!(service->actual_unit_fluid_needs = calloc(num_resources, 
+        sizeof(double)))) {
+        fprintf(stderr, "Insufficient memory to allocate actual service unit fluid_needs!\n");
+        exit(1);
+    }
 
-    if (!(service->total_rigid_requirements = (double *)calloc(num_resources,
-                    sizeof(double)))) {
+    if (!(service->total_rigid_requirements = calloc(num_resources, 
+        sizeof(double)))) {
         fprintf(stderr, "Insufficient memory to allocate service total rigid_requirements!\n");
         exit(1);
     }
 
-    if (!(service->total_fluid_needs = (double *)calloc(num_resources,
-                    sizeof(double)))) {
+    if (!(service->total_fluid_needs = calloc(num_resources, sizeof(double)))) {
         fprintf(stderr, "Insufficient memory to allocate service total fluid_needs!\n");
+        exit(1);
+    }
+
+    if (!(service->actual_total_fluid_needs = calloc(num_resources, 
+        sizeof(double)))) {
+        fprintf(stderr, "Insufficient memory to allocate actual service total fluid_needs!\n");
         exit(1);
     }
 
@@ -176,8 +184,7 @@ static flexsched_problem_t new_flexsched_problem(FILE *input, FILE *estimates) {
     int i, j;
 
     // initialize flex_problem
-    if (!(flex_prob = 
-        (flexsched_problem_t)malloc(sizeof(struct flexsched_problem_s)))) {
+    if (!(flex_prob = malloc(sizeof(struct flexsched_problem_s)))) {
         fprintf(stderr, 
             "Insufficient memory to allocate flexsched problem structure!\n");
         exit(1);
@@ -187,8 +194,7 @@ static flexsched_problem_t new_flexsched_problem(FILE *input, FILE *estimates) {
     fscanf(input,"%d", &flex_prob->num_servers);
     fscanf(input,"%d", &flex_prob->num_services);
 
-    flex_prob->servers = 
-        (server_t *)calloc(flex_prob->num_servers, sizeof(server_t));
+    flex_prob->servers = calloc(flex_prob->num_servers, sizeof(server_t));
 
     for (i = 0; i < flex_prob->num_servers; i++) {
         flex_prob->servers[i] = new_server(flex_prob->num_resources);
@@ -198,21 +204,34 @@ static flexsched_problem_t new_flexsched_problem(FILE *input, FILE *estimates) {
             fscanf(input,"%lf", &(flex_prob->servers[i]->total_capacities[j]));
     }
 
-    flex_prob->services = 
-        (service_t *)calloc(flex_prob->num_services, sizeof(service_t));
+    flex_prob->services = calloc(flex_prob->num_services, sizeof(service_t));
 
     for (i = 0; i < flex_prob->num_services; i++) {
         flex_prob->services[i] = new_service(flex_prob->num_resources);
         for (j = 0; j < flex_prob->num_resources; j++) 
-            fscanf(input,"%lf", 
+            fscanf(input, "%lf", 
                 &(flex_prob->services[i]->unit_rigid_requirements[j]));
         for (j = 0; j < flex_prob->num_resources; j++) 
-            fscanf(input,"%lf", &(flex_prob->services[i]->unit_fluid_needs[j]));
+            fscanf(input, "%lf", &(flex_prob->services[i]->actual_unit_fluid_needs[j]));
         for (j = 0; j < flex_prob->num_resources; j++) 
-            fscanf(input,"%lf", 
+            fscanf(input, "%lf", 
                 &(flex_prob->services[i]->total_rigid_requirements[j]));
         for (j = 0; j < flex_prob->num_resources; j++) 
-            fscanf(input,"%lf", &(flex_prob->services[i]->total_fluid_needs[j]));
+            fscanf(input, "%lf", &(flex_prob->services[i]->actual_total_fluid_needs[j]));
+        if (estimates) {
+            for (j = 0; j < flex_prob->num_resources; j++) 
+                fscanf(estimates, "%lf", &(flex_prob->services[i]->unit_fluid_needs[j]));
+            for (j = 0; j < flex_prob->num_resources; j++) 
+                fscanf(estimates, "%lf", &(flex_prob->services[i]->total_fluid_needs[j]));
+        } else {
+            for (j = 0; j < flex_prob->num_resources; j++) {
+                flex_prob->services[i]->unit_fluid_needs[j] =
+                    flex_prob->services[i]->actual_unit_fluid_needs[j];
+                flex_prob->services[i]->total_fluid_needs[j] =
+                    flex_prob->services[i]->actual_total_fluid_needs[j];
+            }
+        }
+
     }
 
     return flex_prob;
@@ -232,6 +251,8 @@ static void free_service(service_t service) {
     free(service->unit_fluid_needs);
     free(service->total_rigid_requirements);
     free(service->total_fluid_needs);
+    free(service->actual_unit_fluid_needs);
+    free(service->actual_total_fluid_needs);
     free(service);
     return;
 }
@@ -252,6 +273,179 @@ static void free_flexsched_problem(flexsched_problem_t flex_prob) {
     free(flex_prob);
 }
 
+void compute_cap_yields(flexsched_solution_t flex_soln, double actual_yields[]) 
+{
+    int i, j;
+    flexsched_problem_t flex_prob = flex_soln->prob;
+    double actual_need, estimated_need, allocation, res_yield;
+    for (i = 0; i < flex_prob->num_services; i++) {
+        actual_yields[i] = 1.0;
+        for (j = 0; j < flex_prob->num_resources; j++) {
+            // check unit need
+            actual_need = flex_prob->services[i]->actual_unit_fluid_needs[j];
+            if (actual_need > 0.0) {
+                estimated_need = flex_prob->services[i]->unit_fluid_needs[j];
+                allocation = flex_soln->yields[i] * estimated_need;
+                res_yield = allocation / actual_need;
+                if (res_yield < actual_yields[i]) actual_yields[i] = res_yield;
+            }
+            // check total need
+            actual_need = flex_prob->services[i]->actual_total_fluid_needs[j];
+            if (actual_need > 0.0) {
+                estimated_need = flex_prob->services[i]->total_fluid_needs[j];
+                allocation = flex_soln->yields[i] * estimated_need;
+                res_yield = allocation / actual_need;
+                if (res_yield < actual_yields[i]) actual_yields[i] = res_yield;
+            }
+        }
+        if (actual_yields[i] < EPSILON) actual_yields[i] = EPSILON;
+    }
+    return;
+}
+
+void compute_wgt_yields(flexsched_solution_t flex_soln, double actual_yields[]) 
+{
+    int i, j, k;
+    flexsched_problem_t flex_prob = flex_soln->prob;
+
+    int service, num_services, *services;
+    double *allocated_resources, *total_weights;
+    double new_yield;
+
+    services = calloc(flex_prob->num_services, sizeof(int));
+
+    allocated_resources = calloc(flex_prob->num_resources, sizeof(double));
+    total_weights = calloc(flex_prob->num_resources, sizeof(double));
+    
+    compute_cap_yields(flex_soln, actual_yields);
+
+    // since these are single task jobs, do everything by server
+    for (j = 0; j < flex_prob->num_servers; j++) {
+        num_services = 0;
+        for (i = 0; i < flex_prob->num_services; i++) {
+            if (flex_soln->mapping[i] == j) {
+                services[num_services++] = i;
+            }
+        }
+        while(num_services > 0) {
+            for (k = 0; k < flex_prob->num_resources; k++) {
+                allocated_resources[k] = 0.0;
+                total_weights[k] = 0.0;
+                // FIXME: run through all of them each time or keep two lists?
+                for (i = 0; i < flex_prob->num_services; i++) {
+                    if (flex_soln->mapping[i] == j) {
+                        allocated_resources[k] += 
+                            flex_prob->services[i]->total_rigid_requirements[k]
+                            + actual_yields[i] * 
+                            flex_prob->services[i]->actual_total_fluid_needs[k];
+                    }
+                }
+            }
+            for (i = 0; i < num_services; i++) {
+                service = services[i];
+                for (k = 0; k < flex_prob->num_resources; k++) {
+                    total_weights[k] += flex_soln->yields[service] * 
+                        flex_prob->services[service]->total_fluid_needs[k];
+                }
+            }
+            i = 0;
+            while (i < num_services) {
+                service = services[i];
+                new_yield = 1.0;
+                for (k = 0; k < flex_prob->num_resources; k++) {
+                    if (flex_prob->services[service]->actual_total_fluid_needs[k] > 0.0) {
+                        new_yield = MIN(new_yield, MIN(
+                            (flex_prob->servers[j]->unit_capacities[k] - flex_prob->services[service]->unit_rigid_requirements[k]) /
+                            flex_prob->services[service]->actual_unit_fluid_needs[k],
+                            actual_yields[service] + 
+                            (flex_prob->servers[j]->total_capacities[k] - allocated_resources[k]) *
+                            (flex_soln->yields[service] * flex_prob->services[service]->total_fluid_needs[k] / total_weights[k]) / 
+                            flex_prob->services[service]->actual_total_fluid_needs[k]));
+                    }
+                }
+                if (new_yield - actual_yields[service] < EPSILON) {
+                    delete_int_array_index(services, i, num_services--);
+                    continue;
+                }
+                actual_yields[service] = new_yield;
+                i++;
+            }
+        }
+    }
+    free(services);
+    free(allocated_resources);
+    free(total_weights);
+    return;
+}
+
+void compute_equi_yields(flexsched_solution_t flex_soln, double actual_yields[])
+{
+    int i, j, k;
+    flexsched_problem_t flex_prob = flex_soln->prob;
+
+    int service, num_services, num_shares, *services;
+    double *allocated_resources;
+    double new_yield;
+
+    services = calloc(flex_prob->num_services, sizeof(int));
+
+    allocated_resources = calloc(flex_prob->num_resources, sizeof(double));
+    
+    for (i = 0; i < flex_prob->num_services; i++) {
+        actual_yields[i] = EPSILON;
+    }
+
+    // since these are single task jobs, do everything by server
+    for (j = 0; j < flex_prob->num_servers; j++) {
+        num_services = 0;
+        for (i = 0; i < flex_prob->num_services; i++) {
+            if (flex_soln->mapping[i] == j) {
+                services[num_services++] = i;
+            }
+        }
+        while(num_services > 0) {
+            num_shares = num_services;
+            for (k = 0; k < flex_prob->num_resources; k++) {
+                allocated_resources[k] = 0.0;
+                // FIXME: run through all of them each time or keep two lists?
+                for (i = 0; i < flex_prob->num_services; i++) {
+                    if (flex_soln->mapping[i] == j) {
+                        allocated_resources[k] += 
+                            flex_prob->services[i]->total_rigid_requirements[k]
+                            + actual_yields[i] * 
+                            flex_prob->services[i]->actual_total_fluid_needs[k];
+                    }
+                }
+            }
+            i = 0;
+            while (i < num_services) {
+                service = services[i];
+                new_yield = 1.0;
+                for (k = 0; k < flex_prob->num_resources; k++) {
+                    if (flex_prob->services[service]->actual_total_fluid_needs[k] > 0.0) {
+                        new_yield = MIN(new_yield, MIN(
+                            (flex_prob->servers[j]->unit_capacities[k] - flex_prob->services[service]->unit_rigid_requirements[k]) /
+                            flex_prob->services[service]->actual_unit_fluid_needs[k],
+                            actual_yields[service] + 
+                            ((flex_prob->servers[j]->total_capacities[k] - allocated_resources[k]) /
+                            num_shares) /
+                            flex_prob->services[service]->actual_total_fluid_needs[k]));
+                    }
+                }
+                if (new_yield - actual_yields[service] < EPSILON) {
+                    delete_int_array_index(services, i, num_services--);
+                    continue;
+                }
+                actual_yields[service] = new_yield;
+                i++;
+            }
+        }
+    }
+    free(services);
+    free(allocated_resources);
+    return;
+}
+
 int main(int argc, char *argv[])
 {
     FILE *input, *output, *estimates;
@@ -262,11 +456,13 @@ int main(int argc, char *argv[])
     flexsched_problem_t flex_prob = NULL;
     flexsched_solution_t flex_soln = NULL;
     double elasped_seconds;
-    double non_optimized_average_yield;
-    double non_optimized_utilization;
-    double total;
+    double expected_minimum_yield, expected_average_yield;
+    double *actual_yields;
+    double cap_minimum_yield, cap_average_yield;
+    double wgt_minimum_yield, wgt_average_yield;
+    double equi_minimum_yield, equi_average_yield;
 
-    if ((argc < 2) || (argc > 4)) {
+    if ((argc < 2) || (argc > 5)) {
         fprintf(stderr,
             "Usage: %s <scheduler list> [<instance file> [result file]]\n",
             argv[0]);
@@ -290,7 +486,7 @@ int main(int argc, char *argv[])
     }
 
     // output 
-    if (argc < 4) {
+    if (argc < 4 || !strcmp(argv[3], "-")) {
 	    output = stdout;
     } else {
         deactivate_unneeded_schedulers(schedulers, argv[3]);
@@ -304,13 +500,16 @@ int main(int argc, char *argv[])
     if (argc < 5) {
         estimates = NULL;
     } else if (!(estimates = fopen(argv[4], "r"))) {
-	    fprintf(stderr, "Can't open file '%s' for reading\n", argv[2]);
+	    fprintf(stderr, "Can't open file '%s' for reading\n", argv[4]);
 	    exit(1);
     }
 
     flex_prob = new_flexsched_problem(input, estimates);
 
     fclose(input);
+    fclose(estimates);
+
+    actual_yields = calloc(flex_prob->num_services, sizeof(double));
 
     for (sched = schedulers; *sched; sched++) {
 
@@ -321,14 +520,17 @@ int main(int argc, char *argv[])
         gettimeofday(&time1, NULL);
 
         // Call the scheduler
-        flex_soln = (*sched)->func(flex_prob, (*sched)->name, (*sched)->options);
+        flex_soln = 
+            (*sched)->func(flex_prob, (*sched)->name, (*sched)->options);
 
         gettimeofday(&time2, NULL);
 
         if (flex_soln->success) {
 
             // Sanity check the allocation
-            if ((*sched)->sanitycheck && sanity_check(flex_soln)) {
+            if ((*sched)->sanitycheck && 
+                sanity_check(flex_prob, flex_soln->mapping, flex_soln->yields)) 
+            {
                 fprintf(stderr, 
                     "Invalid allocation by algorithm %s on file %s\n",
                     (*sched)->string, argv[2]);
@@ -336,19 +538,61 @@ int main(int argc, char *argv[])
             }
 
             if (strcmp((*sched)->name, "LPBOUND")) {
-                non_optimized_average_yield = compute_average_yield(flex_soln);
-                non_optimized_utilization = compute_utilization(flex_soln);
                 maximize_minimum_then_average_yield(flex_soln);
-            }
+                if ((*sched)->sanitycheck && 
+                    sanity_check(flex_prob, flex_soln->mapping, flex_soln->yields)) 
+                {
+                    fprintf(stderr, 
+                        "Invalid allocation by algorithm %s on file %s after optimization\n",
+                        (*sched)->string, argv[2]);
+                    exit(1);
+                }
+                expected_minimum_yield = compute_minimum_yield(flex_soln);
+                expected_average_yield = compute_average_yield(flex_soln);
 
-            // Re-Sanity check the allocation
-            if ((*sched)->sanitycheck && sanity_check(flex_soln)) {
-                fprintf(stderr, 
-                    "Invalid optimized allocation by algorithm %s on file %s\n",
-                    (*sched)->string, argv[2]);
-                exit(1);
-            }
+                compute_cap_yields(flex_soln, actual_yields);
+                if ((*sched)->sanitycheck && 
+                    sanity_check2(flex_prob, flex_soln->mapping, actual_yields))
+                {
+                    fprintf(stderr, 
+                        "Invalid allocation by algorithm %s on file %s after caps\n",
+                        (*sched)->string, argv[2]);
+                    exit(1);
+                }
+                cap_minimum_yield = double_array_min(actual_yields, 
+                    flex_prob->num_services);
+                cap_average_yield = double_array_sum(actual_yields,
+                        flex_prob->num_services) / flex_prob->num_services;
 
+                compute_wgt_yields(flex_soln, actual_yields);
+                if ((*sched)->sanitycheck && 
+                    sanity_check2(flex_prob, flex_soln->mapping, actual_yields)) 
+                {
+                    fprintf(stderr, 
+                        "Invalid allocation by algorithm %s on file %s after weights\n",
+                        (*sched)->string, argv[2]);
+                    exit(1);
+                }
+                wgt_minimum_yield = double_array_min(actual_yields, 
+                    flex_prob->num_services);
+                wgt_average_yield = double_array_sum(actual_yields,
+                        flex_prob->num_services) / flex_prob->num_services;
+
+                compute_equi_yields(flex_soln, actual_yields);
+                if ((*sched)->sanitycheck && 
+                    sanity_check2(flex_prob, flex_soln->mapping, actual_yields)) 
+                {
+                    fprintf(stderr, 
+                        "Invalid allocation by algorithm %s on file %s after equi\n",
+                        (*sched)->string, argv[2]);
+                    exit(1);
+                }
+                equi_minimum_yield = double_array_min(actual_yields, 
+                    flex_prob->num_services);
+                equi_average_yield = double_array_sum(actual_yields,
+                        flex_prob->num_services) / flex_prob->num_services;
+
+            }
         }
 
         // Compute elapsed time
@@ -363,19 +607,27 @@ int main(int argc, char *argv[])
             fprintf(output, "%.3f|", -1.0);
             fprintf(output, "%.3f|", -1.0);
             fprintf(output, "%.3f|", -1.0);
+            fprintf(output, "%.3f|", -1.0);
+            fprintf(output, "%.3f|", -1.0);
+            fprintf(output, "%.3f|", -1.0);
         } else if (flex_soln->success) {
-            fprintf(output, "%.3f|", compute_minimum_yield(flex_soln));
-            fprintf(output, "%.3f|", non_optimized_average_yield);
-            fprintf(output, "%.3f|", compute_average_yield(flex_soln));
-            fprintf(output, "%.3f|", non_optimized_utilization);
-            fprintf(output, "%.3f|", compute_utilization(flex_soln));
+            fprintf(output, "%.3f|", expected_minimum_yield);
+            fprintf(output, "%.3f|", expected_average_yield);
+            fprintf(output, "%.3f|", cap_minimum_yield);
+            fprintf(output, "%.3f|", cap_average_yield);
+            fprintf(output, "%.3f|", wgt_minimum_yield);
+            fprintf(output, "%.3f|", wgt_average_yield);
+            fprintf(output, "%.3f|", equi_minimum_yield);
+            fprintf(output, "%.3f|", equi_average_yield);
         } else {
             fprintf(output, "%.3f|", -1.0);
             fprintf(output, "%.3f|", -1.0);
             fprintf(output, "%.3f|", -1.0);
             fprintf(output, "%.3f|", -1.0);
             fprintf(output, "%.3f|", -1.0);
-
+            fprintf(output, "%.3f|", -1.0);
+            fprintf(output, "%.3f|", -1.0);
+            fprintf(output, "%.3f|", -1.0);
         }
         fprintf(output, "%.3f|", elasped_seconds);
         fprintf(output, "%s\n", flex_soln->misc_output);

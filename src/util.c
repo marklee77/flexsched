@@ -57,6 +57,14 @@ int double_array_argmin(double *array, int size)
     return argmin;
 }
 
+void delete_int_array_index(int *array, int idx, int size) {
+    int i;
+    for (i = idx; i < size - 1; i++) {
+        array[i] = array[i+1];
+    }
+    return;
+}
+
 flexsched_solution_t new_flexsched_solution(flexsched_problem_t flex_prob) 
 {
     int i;
@@ -123,6 +131,15 @@ inline int unit_allocation_at_yield_within_capacity_in_dim(flexsched_problem_t
 {
     return flex_prob->services[service]->unit_rigid_requirements[dim] +
         yield * flex_prob->services[service]->unit_fluid_needs[dim]
+        < flex_prob->servers[server]->unit_capacities[dim] + EPSILON;
+}
+
+// FIXME: painfully hacky
+inline int unit_allocation_at_yield_within_capacity_in_dim2(flexsched_problem_t 
+    flex_prob, int service, double yield, int server, int dim) 
+{
+    return flex_prob->services[service]->unit_rigid_requirements[dim] +
+        yield * flex_prob->services[service]->actual_unit_fluid_needs[dim]
         < flex_prob->servers[server]->unit_capacities[dim] + EPSILON;
 }
 
@@ -418,24 +435,24 @@ double compute_utilization(flexsched_solution_t flex_soln)
  * Checks that resource capacities are not overcome and that
  * the mapping is valid
  */
-int sanity_check(flexsched_solution_t flex_soln)
+int sanity_check(flexsched_problem_t flex_prob, int mapping[], double yields[])
 {
     int i, j, k;
     int retval = 0;
-    double allocated_resources[flex_soln->prob->num_servers][flex_soln->prob->num_resources];
+    double allocated_resources[flex_prob->num_servers][flex_prob->num_resources];
 
     // check that each service is mapped to a server and yields are <= 1.0
-    for (i = 0; i < flex_soln->prob->num_services; i++) {
-        if (flex_soln->mapping[i] < 0 || 
-            flex_soln->mapping[i] >= flex_soln->prob->num_servers) {
+    for (i = 0; i < flex_prob->num_services; i++) {
+        if (mapping[i] < 0 || 
+            mapping[i] >= flex_prob->num_servers) {
             fprintf(stderr, 
                 "Error: Service %d is mapped to invalid server %d\n.", i, 
-                flex_soln->mapping[i]);
+                mapping[i]);
             retval = 1;
         }
-        if (flex_soln->yields[i] < EPSILON || flex_soln->yields[i] > 1.0) {
+        if (yields[i] < EPSILON || yields[i] > 1.0) {
             fprintf(stderr, "Error: Allocation of service %d is %.2f.\n",
-                i, flex_soln->yields[i]);
+                i, yields[i]);
             retval = 1;
         }
     }
@@ -443,45 +460,117 @@ int sanity_check(flexsched_solution_t flex_soln)
     if (retval) return retval;
 
     // initialize allocated resources
-    for (i = 0; i < flex_soln->prob->num_servers; i++) {
-        for (j = 0; j < flex_soln->prob->num_resources; j++) {
+    for (i = 0; i < flex_prob->num_servers; i++) {
+        for (j = 0; j < flex_prob->num_resources; j++) {
             allocated_resources[i][j] = 0.0;
         }
     }
 
     // check unit allocations and sum up allocations
-    for (i = 0; i < flex_soln->prob->num_services; i++) {
-        for (j = 0; j < flex_soln->prob->num_resources; j++) {
-            if(!unit_allocation_at_yield_within_capacity_in_dim(flex_soln->prob,
-                i, flex_soln->yields[i], flex_soln->mapping[i], j))
+    for (i = 0; i < flex_prob->num_services; i++) {
+        for (j = 0; j < flex_prob->num_resources; j++) {
+            if(!unit_allocation_at_yield_within_capacity_in_dim(flex_prob,
+                i, yields[i], mapping[i], j))
             {
                 fprintf(stderr, 
                     "Error: Allocation of service %d to server %d with yield %.3f exceeds unit capacity in resource dimension %d (%.3f + %.3f = %.3f/%.3f).\n", 
-                    i, flex_soln->mapping[i], flex_soln->yields[i], j,
-                    flex_soln->prob->services[i]->unit_rigid_requirements[j],
-                    flex_soln->yields[i] * 
-                        flex_soln->prob->services[i]->unit_fluid_needs[j], 
-                    flex_soln->prob->services[i]->unit_rigid_requirements[j] + 
-                        flex_soln->yields[i] * 
-                        flex_soln->prob->services[i]->unit_fluid_needs[j], 
-                    flex_soln->prob->servers[flex_soln->mapping[i]]->unit_capacities[j]);
+                    i, mapping[i], yields[i], j,
+                    flex_prob->services[i]->unit_rigid_requirements[j],
+                    yields[i] * 
+                        flex_prob->services[i]->unit_fluid_needs[j], 
+                    flex_prob->services[i]->unit_rigid_requirements[j] + 
+                        yields[i] * 
+                        flex_prob->services[i]->unit_fluid_needs[j], 
+                    flex_prob->servers[mapping[i]]->unit_capacities[j]);
                 retval = 1;
             }
-            allocated_resources[flex_soln->mapping[i]][j] += 
-                flex_soln->prob->services[i]->total_rigid_requirements[j] + 
-                flex_soln->yields[i] * 
-                    flex_soln->prob->services[i]->total_fluid_needs[j];
+            allocated_resources[mapping[i]][j] += 
+                flex_prob->services[i]->total_rigid_requirements[j] + 
+                yields[i] * 
+                    flex_prob->services[i]->total_fluid_needs[j];
         }
     }
 
-    for (i = 0; i < flex_soln->prob->num_servers; i++) {
-        for (j = 0; j < flex_soln->prob->num_resources; j++) {
-            if (flex_soln->prob->servers[i]->total_capacities[j] + EPSILON <= 
+    for (i = 0; i < flex_prob->num_servers; i++) {
+        for (j = 0; j < flex_prob->num_resources; j++) {
+            if (flex_prob->servers[i]->total_capacities[j] + EPSILON <= 
                 allocated_resources[i][j]) {
                 fprintf(stderr, 
                     "Error: Total resource allocation on server %d exceeds capacity in dimension %d (%.6f/%.6f).\n",
                     i, j, allocated_resources[i][j], 
-                    flex_soln->prob->servers[i]->total_capacities[j]);
+                    flex_prob->servers[i]->total_capacities[j]);
+                retval = 1;
+            }
+        }
+    }
+
+    return retval;
+}
+
+int sanity_check2(flexsched_problem_t flex_prob, int mapping[], double yields[])
+{
+    int i, j, k;
+    int retval = 0;
+    double allocated_resources[flex_prob->num_servers][flex_prob->num_resources];
+
+    // check that each service is mapped to a server and yields are <= 1.0
+    for (i = 0; i < flex_prob->num_services; i++) {
+        if (mapping[i] < 0 || 
+            mapping[i] >= flex_prob->num_servers) {
+            fprintf(stderr, 
+                "Error: Service %d is mapped to invalid server %d\n.", i, 
+                mapping[i]);
+            retval = 1;
+        }
+        if (yields[i] < EPSILON || yields[i] > 1.0) {
+            fprintf(stderr, "Error: Allocation of service %d is %.2f.\n",
+                i, yields[i]);
+            retval = 1;
+        }
+    }
+
+    if (retval) return retval;
+
+    // initialize allocated resources
+    for (i = 0; i < flex_prob->num_servers; i++) {
+        for (j = 0; j < flex_prob->num_resources; j++) {
+            allocated_resources[i][j] = 0.0;
+        }
+    }
+
+    // check unit allocations and sum up allocations
+    for (i = 0; i < flex_prob->num_services; i++) {
+        for (j = 0; j < flex_prob->num_resources; j++) {
+            if(!unit_allocation_at_yield_within_capacity_in_dim2(flex_prob,
+                i, yields[i], mapping[i], j))
+            {
+                fprintf(stderr, 
+                    "Error: Allocation of service %d to server %d with yield %.3f exceeds unit capacity in resource dimension %d (%.3f + %.3f = %.3f/%.3f).\n", 
+                    i, mapping[i], yields[i], j,
+                    flex_prob->services[i]->unit_rigid_requirements[j],
+                    yields[i] * 
+                        flex_prob->services[i]->actual_unit_fluid_needs[j], 
+                    flex_prob->services[i]->unit_rigid_requirements[j] + 
+                        yields[i] * 
+                        flex_prob->services[i]->actual_unit_fluid_needs[j], 
+                    flex_prob->servers[mapping[i]]->unit_capacities[j]);
+                retval = 1;
+            }
+            allocated_resources[mapping[i]][j] += 
+                flex_prob->services[i]->total_rigid_requirements[j] + 
+                yields[i] * 
+                    flex_prob->services[i]->actual_total_fluid_needs[j];
+        }
+    }
+
+    for (i = 0; i < flex_prob->num_servers; i++) {
+        for (j = 0; j < flex_prob->num_resources; j++) {
+            if (flex_prob->servers[i]->total_capacities[j] + EPSILON <= 
+                allocated_resources[i][j]) {
+                fprintf(stderr, 
+                    "Error: Total resource allocation on server %d exceeds capacity in dimension %d (%.6f/%.6f).\n",
+                    i, j, allocated_resources[i][j], 
+                    flex_prob->servers[i]->total_capacities[j]);
                 retval = 1;
             }
         }
