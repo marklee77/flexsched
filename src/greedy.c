@@ -109,7 +109,7 @@ void GREEDY_sort_services(int *sortmap, flexsched_problem_t flex_prob,
     for (i = 0; i < flex_prob->num_services; i++) sortmap[i] = i;
 
     // Sort the jobs
-    qsort_r(sortmap, flex_prob->num_services, sizeof(int), flex_prob, 
+    QSORT_R(sortmap, flex_prob->num_services, sizeof(int), flex_prob, 
         cmp_items);
 
     return;
