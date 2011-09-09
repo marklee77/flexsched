@@ -351,7 +351,7 @@ void maximize_minimum_yield_on_server(
 
     for (i = 0; i < flex_soln->prob->num_services; i++) {
         if (flex_soln->mapping[i] != server) continue;
-        flex_soln->yields[i] = minyield - EPSILON;
+        flex_soln->yields[i] = MAX(EPSILON, minyield - EPSILON);
     }
 
     return;

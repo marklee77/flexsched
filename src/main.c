@@ -490,11 +490,11 @@ int main(int argc, char *argv[])
 	    output = stdout;
     } else {
         deactivate_unneeded_schedulers(schedulers, argv[3]);
-	    if (!(output = fopen(argv[3], "a"))) {
-	        fprintf(stderr, "Can't open file '%s' for writing/appending\n", 
-                argv[3]);
-	        exit(1);
-	    }
+        if (!(output = fopen(argv[3], "a"))) {
+            fprintf(stderr, "Can't open file '%s' for writing/appending\n", 
+            argv[3]);
+            exit(1);
+        }
     }
 
     if (argc < 5) {
@@ -507,7 +507,7 @@ int main(int argc, char *argv[])
     flex_prob = new_flexsched_problem(input, estimates);
 
     fclose(input);
-    fclose(estimates);
+    if (estimates) fclose(estimates);
 
     actual_yields = calloc(flex_prob->num_services, sizeof(double));
 

@@ -76,10 +76,8 @@ int solve_linear_program(linear_program_t lp, int rational)
     int status;
     double val;
 
-    //CPXwriteprob(lp->env, lp->lp, "myprob.lp", "LP");
-
     if (rational) {
-        CPXchgprobtype(lp->env, lp->lp, CPXPROB_LP);
+        CPXchgprobtype(lp->env, lp->lp, CPXPROB_FIXEDMILP);
         status = CPXlpopt(lp->env, lp->lp);
     } else {
         CPXchgprobtype(lp->env, lp->lp, CPXPROB_MILP);

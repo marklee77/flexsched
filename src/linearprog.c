@@ -263,7 +263,7 @@ flexsched_solution_t LPROUNDING_solver(
 
         // set the mappings appropriately
         put_service_on_server_fast(flex_soln, i, feasible_servers[j]);
-        flex_soln->yields[i] = yields[j];
+        flex_soln->yields[i] = MAX(EPSILON, yields[j]);
     }
     free_linear_program(lp);
     free_global_resource_availabilities_and_loads(flex_prob);
@@ -281,7 +281,7 @@ flexsched_solution_t LPROUNDING_solver(
                         if (flex_soln->mapping[i] != j || flex_soln->yields[i]
                                 <= EPSILON) continue;
                         couldreduce = 1;
-                        flex_soln->yields[i] -= EPSILON;
+                        flex_soln->yields[i] = MAX(EPSILON, flex_soln->yields[i] - EPSILON);
                     } 
                     if (!couldreduce) return flex_soln; // can't fix problem
                 }
@@ -390,7 +390,7 @@ void maximize_average_yield_given_minimum(
     if (solve_linear_program(lp, RATIONAL)) return;
 
     for (i = 0; i < flex_soln->prob->num_services; i++) {
-        flex_soln->yields[i] = get_col_val(lp, ALLOC_LP_COL_Y_I) - EPSILON;
+        flex_soln->yields[i] = MAX(EPSILON, get_col_val(lp, ALLOC_LP_COL_Y_I) - EPSILON);
     }
     free_linear_program(lp);
 
