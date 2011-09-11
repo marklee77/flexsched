@@ -39,9 +39,12 @@
 linear_program_t create_placement_lp(
     flexsched_problem_t flex_prob, int rational)
 {
-    int ia[PLACEMENT_LP_NUM_ELTS];
-    int ja[PLACEMENT_LP_NUM_ELTS];
-    double ra[PLACEMENT_LP_NUM_ELTS];
+    int *ia, *ja;
+    double *ra;
+        
+    ia = calloc(PLACEMENT_LP_NUM_ELTS, sizeof(int));
+    ja = calloc(PLACEMENT_LP_NUM_ELTS, sizeof(int));
+    ra = calloc(PLACEMENT_LP_NUM_ELTS, sizeof(double));
 
     linear_program_t lp = new_linear_program(PLACEMENT_LP_NUM_COLS,
         PLACEMENT_LP_NUM_ROWS);

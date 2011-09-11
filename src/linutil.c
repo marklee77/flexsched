@@ -65,7 +65,7 @@ void set_row_params(
     return;
 }
 
-void load_matrix(linear_program_t lp, int elts, int ia[], int ja[], double ra[])
+void load_matrix(linear_program_t lp, int elts, int *ia, int *ja, double *ra)
 {
     CPXchgcoeflist(lp->env, lp->lp, elts, ia, ja, ra);
     return;
@@ -154,11 +154,15 @@ void set_row_params(
     return;
 }
 
-void load_matrix(linear_program_t lp, int elts, int ia[], int ja[], double ra[])
+void load_matrix(linear_program_t lp, int elts, int *ia, int *ja, double *ra)
 {
     int i;
-    int ib[elts+1], jb[elts+1];
-    double rb[elts+1];
+    int *ib, *jb;
+    double *rb;
+    ib = calloc(elts+1, sizeof(int));
+    jb = calloc(elts+1, sizeof(int));
+    rb = calloc(elts+1, sizeof(double));
+
     for (i = 0; i < elts; i++) {
         ib[i+1] = ia[i]+1;
         jb[i+1] = ja[i]+1;
