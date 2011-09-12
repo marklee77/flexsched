@@ -53,18 +53,17 @@ vp_solution_t solve_hvp_problem_FITD(vp_problem_t vp_prob, int args[],
             for (j = 0; j < vp_prob->num_bins; j++) {
                 b = bin_sortmap[j];
                 if (vp_item_can_fit_in_bin(vp_soln, v, b)) {
-                    sumcapacities[j] = 0.0;
+                    sumcapacities[b] = 0.0;
                     for (k = 0; k < vp_prob->num_dims; k++) {
-                        sumcapacities[j] += 
+                        sumcapacities[b] += 
                             vp_prob->bins[b]->totals[k] - vp_soln->loads[b][k];
                     }
                 } else {
-                    sumcapacities[j] = 1.0 * vp_prob->num_dims + 1.0;
+                    sumcapacities[b] = 2.0 * vp_prob->num_dims + 1.0;
                 }
             }
-            j = double_array_argmin(sumcapacities, vp_prob->num_bins);
-            b = bin_sortmap[j];
-            if (sumcapacities[j] > 1.0 * vp_prob->num_dims || 
+            b = double_array_argmin(sumcapacities, vp_prob->num_bins);
+            if (sumcapacities[j] > 2.0 * vp_prob->num_dims || 
                 vp_put_item_in_bin_safe(vp_soln, v, b)) return vp_soln;
             if (reshuffle_bins && cmp_bin_idxs) {
                 QSORT_R(bin_sortmap, vp_prob->num_bins, sizeof(int), 
@@ -410,34 +409,27 @@ vp_solution_t solve_hvp_problem_META2(vp_problem_t vp_prob, int notargs[],
 
     args[0] = BEST_FIT;
     for (item_sort_name = sortnames; *item_sort_name; item_sort_name++) {
-	vp_soln = solve_hvp_problem_FITD(vp_prob, args, 
+        vp_soln = solve_hvp_problem_FITD(vp_prob, args, 
             get_vp_cmp_func(*item_sort_name), get_vp_cmp_func("NONE"));
-	if (vp_soln && vp_soln->success) {
-	    sprintf(vp_soln->misc_output, "BF %s NONE", *item_sort_name);
-	    return vp_soln;
+        if (vp_soln && vp_soln->success) {
+            sprintf(vp_soln->misc_output, "BF %s NONE", *item_sort_name);
+            return vp_soln;
         }
-	free_vp_solution(vp_soln);
-	vp_soln = solve_hvp_problem_FITD(vp_prob, args, 
-            get_vp_cmp_func("NONE"), get_vp_cmp_func(*item_sort_name));
-	if (vp_soln && vp_soln->success) {
-	    sprintf(vp_soln->misc_output, "BF NONE %s", *item_sort_name);
-	    return vp_soln;
-        }
-	free_vp_solution(vp_soln);
+        free_vp_solution(vp_soln);
     }
 
     args[0] = FIRST_FIT;
     for (item_sort_name = sortnames; *item_sort_name; item_sort_name++) {
         for (bin_sort_name = sortnames; *bin_sort_name; bin_sort_name++) {
-	    vp_soln = solve_hvp_problem_FITD(vp_prob, args, 
+            vp_soln = solve_hvp_problem_FITD(vp_prob, args, 
                 get_vp_cmp_func(*item_sort_name), 
                 get_vp_cmp_func(*bin_sort_name));
-	    if (vp_soln && vp_soln->success) {
+            if (vp_soln && vp_soln->success) {
                 sprintf(vp_soln->misc_output, "FF %s %s", *item_sort_name, 
                     *bin_sort_name);
-	        return vp_soln;
-	    }
-	    free_vp_solution(vp_soln);
+                return vp_soln;
+            }
+            free_vp_solution(vp_soln);
         }
     }
 
@@ -574,6 +566,7 @@ flexsched_solution_t HVP_scheduler(
     qsort_cmp_func *cmp_item_idxs = NULL;
     qsort_cmp_func *cmp_bin_idxs = NULL;
     char **opt;
+    int item_sort_specified = 0;
 
     // could be a little more rigorous here...
     for (opt = options; *opt; opt++) {
@@ -599,11 +592,11 @@ flexsched_solution_t HVP_scheduler(
             args[3] = 1;
         } else if ('W' == **opt) {
             args[4] = atoi(*opt + 1);
-        } else if (cmp_tmp = get_vp_cmp_func(*opt)) {
-            // FIXME: We *could* change the params to allow specifying a bin 
-            // comparator but not an item comparator, but is that interesting?
-            if (!cmp_item_idxs) {
+        } else {
+            cmp_tmp = get_vp_cmp_func(*opt);
+            if (!item_sort_specified) {
                 cmp_item_idxs = cmp_tmp;
+                item_sort_specified = 1;
             } else {
                 cmp_bin_idxs = cmp_tmp;
             }

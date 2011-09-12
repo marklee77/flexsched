@@ -276,9 +276,7 @@ QSORT_CMP_FUNC_DECL(rcmp_double_array_idxs)
 }
 
 qsort_cmp_func *get_vp_cmp_func(char *cmp_name) {
-    if (NULL == cmp_name) {
-        return NULL;
-    } else if (!strcmp(cmp_name, "ALEX")) {
+    if (!strcmp(cmp_name, "ALEX")) {
         return cmp_vector_array_idxs_lex;
     } else if (!strcmp(cmp_name, "AMAX")) {
         return cmp_vector_array_idxs_max;
@@ -300,10 +298,8 @@ qsort_cmp_func *get_vp_cmp_func(char *cmp_name) {
         return rcmp_vector_array_idxs_maxdiff;
     } else if (!strcmp(cmp_name, "NONE")) {
         return NULL;
-    } else {
-        fprintf(stderr, "Unknown comparison '%s'\n", cmp_name);
-        exit(1);
-    }
-
-    return NULL;
+    } 
+    
+    fprintf(stderr, "Unknown comparison '%s'\n", cmp_name);
+    exit(1);
 }
