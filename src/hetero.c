@@ -404,24 +404,40 @@ vp_solution_t solve_hvp_problem_META2(vp_problem_t vp_prob, int notargs[],
     char *sortnames[] = { "ALEX", "AMAX", "ASUM", "AMAXRATIO", "AMAXDIFF",
         "DLEX", "DMAX", "DSUM", "DMAXRATIO", "DMAXDIFF", "NONE", NULL };
     char **item_sort_name, **bin_sort_name;
-    int isCP, isR, isS, isE, w;
+    int isCP, w;
     int i;
     vp_solution_t vp_soln = NULL;
 
-    for (isCP = 0; isCP <= 1; isCP++) {
-        args[0] = isCP;
-        for (item_sort_name = sortnames; *item_sort_name; item_sort_name++) {
-            for (bin_sort_name = sortnames; *bin_sort_name; bin_sort_name++) {
-                vp_soln = solve_hvp_problem_FITD(vp_prob, args, 
-                    get_vp_cmp_func(*item_sort_name), 
-                    get_vp_cmp_func(*bin_sort_name));
-                if (vp_soln && vp_soln->success) {
-                    sprintf(vp_soln->misc_output, "%s %s %s", 
-                        isCP ? "BF" : "FF", *item_sort_name, *bin_sort_name);
-                    return vp_soln;
-                }
-                free_vp_solution(vp_soln);
-            }
+    args[0] = BEST_FIT;
+    for (item_sort_name = sortnames; *item_sort_name; item_sort_name++) {
+	vp_soln = solve_hvp_problem_FITD(vp_prob, args, 
+            get_vp_cmp_func(*item_sort_name), get_vp_cmp_func("NONE"));
+	if (vp_soln && vp_soln->success) {
+	    sprintf(vp_soln->misc_output, "BF %s NONE", *item_sort_name);
+	    return vp_soln;
+        }
+	free_vp_solution(vp_soln);
+	vp_soln = solve_hvp_problem_FITD(vp_prob, args, 
+            get_vp_cmp_func("NONE"), get_vp_cmp_func(*item_sort_name));
+	if (vp_soln && vp_soln->success) {
+	    sprintf(vp_soln->misc_output, "BF NONE %s", *item_sort_name);
+	    return vp_soln;
+        }
+	free_vp_solution(vp_soln);
+    }
+
+    args[0] = FIRST_FIT;
+    for (item_sort_name = sortnames; *item_sort_name; item_sort_name++) {
+        for (bin_sort_name = sortnames; *bin_sort_name; bin_sort_name++) {
+	    vp_soln = solve_hvp_problem_FITD(vp_prob, args, 
+                get_vp_cmp_func(*item_sort_name), 
+                get_vp_cmp_func(*bin_sort_name));
+	    if (vp_soln && vp_soln->success) {
+                sprintf(vp_soln->misc_output, "FF %s %s", *item_sort_name, 
+                    *bin_sort_name);
+	        return vp_soln;
+	    }
+	    free_vp_solution(vp_soln);
         }
     }
 
