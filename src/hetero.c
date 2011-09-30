@@ -607,6 +607,52 @@ vp_solution_t solve_hvp_problem_METALIGHT2(vp_problem_t vp_prob, int notargs[],
     return new_vp_solution(vp_prob);
 }
 
+vp_solution_t solve_hvp_problem_METALIGHTB(vp_problem_t vp_prob, int notargs[],
+    qsort_cmp_func cmp_item_idxs, qsort_cmp_func cmp_bin_idxs)
+{
+
+    int args[5] = {0, 0, 0, 0, 1};
+    char *itemsorts[] = { "DMAX", "DSUM", "DMAXDIFF", "DMAXRATIO", NULL };
+    char *binsorts[] = { "ALEX", "AMAX", "ASUM", "DMAX", "DMAXDIFF",
+        "DMAXRATIO", "NONE", NULL };
+    char **item_sort_name, **bin_sort_name;
+    int w;
+    int i;
+    vp_solution_t vp_soln = NULL;
+
+    args[0] = BEST_FIT;
+    for (item_sort_name = itemsorts; *item_sort_name; item_sort_name++) {
+        vp_soln = solve_hvp_problem_FITD(vp_prob, args, 
+            get_vp_cmp_func(*item_sort_name), NULL);
+        if (vp_soln && vp_soln->success) { 
+            sprintf(vp_soln->misc_output, "BF %s NONE", *item_sort_name);
+            return vp_soln;
+        }
+        free_vp_solution(vp_soln);
+    }
+
+    // FIXME: don't really know about CP vs PP for only 2 dims...
+    args[0] = 0;
+    for (item_sort_name = itemsorts; *item_sort_name; item_sort_name++) {
+        for (bin_sort_name = binsorts; *bin_sort_name; bin_sort_name++) {
+            for (w = 1; w < vp_prob->num_dims; w++) {
+                args[4] = w;
+                vp_soln = solve_hvp_problem_MCB(vp_prob, args, 
+                    get_vp_cmp_func(*item_sort_name), 
+                    get_vp_cmp_func(*bin_sort_name)); 
+                if (vp_soln && vp_soln->success) {
+                    sprintf(vp_soln->misc_output, "PP %s %s W%d E S", 
+                        *item_sort_name, *bin_sort_name, w);
+                    return vp_soln;
+                }
+                free_vp_solution(vp_soln);
+            }
+        }
+    }
+
+    return new_vp_solution(vp_prob);
+}
+
 // FIXME: this is mostly the same as VP_solver, which isn't super clean...
 flexsched_solution_t HVP_solver(flexsched_problem_t flex_prob,
     vp_solution_t (*solve_hvp_problem)(vp_problem_t, int[], qsort_cmp_func, 
@@ -723,6 +769,10 @@ flexsched_solution_t HVP_scheduler(
 
     if (!strcmp(name, "METAHVPLIGHT2")) {
         solve_hvp_problem = solve_hvp_problem_METALIGHT2;
+    }
+
+    if (!strcmp(name, "METAHVPLIGHTB")) {
+        solve_hvp_problem = solve_hvp_problem_METALIGHTB;
     }
 
     return HVP_solver(flex_prob, solve_hvp_problem, args, cmp_item_idxs, 
