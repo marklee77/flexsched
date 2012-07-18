@@ -120,7 +120,6 @@ linear_program_t new_linear_program(int num_cols, int num_rows)
 
 void free_linear_program(linear_program_t lp)
 {
-    glp_erase_prob(lp);
     glp_delete_prob(lp);
     return;
 }
@@ -188,12 +187,9 @@ int solve_linear_program(linear_program_t lp, int rational)
         solver_status = glp_simplex(lp, NULL);
         solution_status = (glp_get_status(lp) != GLP_OPT);
     } else {
-        glp_iocp parm;
-        glp_init_iocp(&parm);
-        parm.msg_lev = GLP_MSG_ERR;
-        parm.presolve = GLP_ON;
-        parm.tm_lim = GLPK_TIME_LIMIT;
-        solver_status = glp_intopt(lp, &parm);
+        lpx_set_int_parm(lp, LPX_K_MSGLEV, GLP_MSG_ERR);
+        lpx_set_int_parm(lp, LPX_K_TMLIM, GLPK_TIME_LIMIT);
+        lpx_intopt(lp);
         solution_status = (glp_mip_status(lp) != GLP_OPT);
     }
 
