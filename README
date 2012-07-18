@@ -107,6 +107,11 @@ minimum yield.
 
 * HVP
   Like VP, but heterogeneous-bin aware alternatives.
+  additonal parameters:
+       R: re-sort bins after item placement
+       S: scale bin capacities
+       E: equalize dimensions
+
 
 * METAHVP
 
