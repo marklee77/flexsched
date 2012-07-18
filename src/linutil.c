@@ -187,9 +187,13 @@ int solve_linear_program(linear_program_t lp, int rational)
         solver_status = glp_simplex(lp, NULL);
         solution_status = (glp_get_status(lp) != GLP_OPT);
     } else {
-        lpx_set_int_parm(lp, LPX_K_MSGLEV, GLP_MSG_ERR);
-        lpx_set_int_parm(lp, LPX_K_TMLIM, GLPK_TIME_LIMIT);
-        lpx_intopt(lp);
+        glp_iocp parm;
+        glp_init_iocp(&parm);
+        parm.msg_lev = GLP_MSG_ERR;
+        parm.tm_lim = GLPK_TIME_LIMIT;
+        parm.presolve = GLP_ON;
+        parm.binarize = GLP_ON;
+        glp_intopt(lp, &parm);
         solution_status = (glp_mip_status(lp) != GLP_OPT);
     }
 

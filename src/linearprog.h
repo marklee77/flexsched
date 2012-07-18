@@ -5,7 +5,7 @@
 #define INTEGER 0
 
 #define LP_IGNORE 666.0
-#define LP_MILP_MAX_SECONDS 12*60*60
+#define LP_MILP_MAX_SECONDS 600
 
 #ifdef CPLEX
 
