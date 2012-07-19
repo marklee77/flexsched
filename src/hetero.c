@@ -65,6 +65,7 @@ vp_solution_t solve_hvp_problem_FITD(vp_problem_t vp_prob, int args[],
             b = double_array_argmin(sumcapacities, vp_prob->num_bins);
             if (sumcapacities[j] > 2.0 * vp_prob->num_dims || 
                 vp_put_item_in_bin_safe(vp_soln, v, b)) return vp_soln;
+            /* FIXME: prob doesn't make sense to reshuffle bins for best fit */
             if (reshuffle_bins && cmp_bin_idxs) {
                 QSORT_R(bin_sortmap, vp_prob->num_bins, sizeof(int), 
                     vp_prob->bins, cmp_bin_idxs);
@@ -88,7 +89,6 @@ vp_solution_t solve_hvp_problem_MCB(vp_problem_t vp_prob, int args[],
     int isCP = args[0];
     int reshuffle_bins = args[1];
     int rescale_items = args[2];
-    int equalize_dims = args[3];
     int w = MIN(args[4], vp_prob->num_dims);
 
     int dims[vp_prob->num_dims];
@@ -184,22 +184,16 @@ vp_solution_t solve_hvp_problem_MCB(vp_problem_t vp_prob, int args[],
                     j++;
                 }
             }
-            if (equalize_dims) {
-                // we assume j > 0 from above...
-                while (j < vp_prob->num_dims) {
-                    if (vp_soln->capacities[b][dims[j-1]] == 
-                        vp_soln->capacities[b][dims[j]]) {
-                        bin_dim_ranks[dims[j]] = bin_dim_ranks[dims[j-1]];
-                    } else {
-                        bin_dim_ranks[dims[j]] = bin_dim_ranks[dims[j-1]]+1;
-                    }
-                    j++;
+
+            // we assume j > 0 from above...
+            while (j < vp_prob->num_dims) {
+                if (vp_soln->capacities[b][dims[j-1]] == 
+                    vp_soln->capacities[b][dims[j]]) {
+                    bin_dim_ranks[dims[j]] = bin_dim_ranks[dims[j-1]];
+                } else {
+                    bin_dim_ranks[dims[j]] = bin_dim_ranks[dims[j-1]]+1;
                 }
-            } else {
-                while (j < vp_prob->num_dims) {
-                    bin_dim_ranks[dims[j]] = j;
-                    j++;
-                }
+                j++;
             }
 
             // apply bin key inverse to best vector key to get how it permutes
@@ -334,7 +328,7 @@ vp_solution_t solve_hvp_problem_META(vp_problem_t vp_prob, int notargs[],
     char *sortnames[] = { "ALEX", "AMAX", "ASUM", "AMAXRATIO", "AMAXDIFF",
         "DLEX", "DMAX", "DSUM", "DMAXRATIO", "DMAXDIFF", "NONE", NULL };
     char **item_sort_name, **bin_sort_name;
-    int isCP, isR, isS, isE, w;
+    int isCP, isR, isS, w;
     int i;
     vp_solution_t vp_soln = NULL;
 
@@ -369,22 +363,18 @@ vp_solution_t solve_hvp_problem_META(vp_problem_t vp_prob, int notargs[],
                         args[1] = isR;
                         for (isS = 0; isS <= 1; isS++) {
                             args[2] = isS;
-                            for (isE = 0; isE <= 1; isE++) {
-                                args[3] = isE;
-                                vp_soln = solve_hvp_problem_MCB(vp_prob, args, 
-                                    get_vp_cmp_func(*item_sort_name), 
-                                    get_vp_cmp_func(*bin_sort_name)); 
-                                if (vp_soln && vp_soln->success) {
-                                    sprintf(vp_soln->misc_output, 
-                                        "%s %s %s W%d%s%s%s", 
-                                        isCP ? "CP" : "PP", 
-                                        *item_sort_name, *bin_sort_name, w, 
-                                        isR  ? " R" : "", isS  ? " S" : "", 
-                                        isE  ? " E" : "");
-                                    return vp_soln;
-                                }
-                                free_vp_solution(vp_soln);
+                            vp_soln = solve_hvp_problem_MCB(vp_prob, args, 
+                                get_vp_cmp_func(*item_sort_name), 
+                                get_vp_cmp_func(*bin_sort_name)); 
+                            if (vp_soln && vp_soln->success) {
+                                sprintf(vp_soln->misc_output, 
+                                    "%s %s %s W%d%s%s", 
+                                    isCP ? "CP" : "PP", 
+                                    *item_sort_name, *bin_sort_name, w, 
+                                    isR  ? " R" : "", isS  ? " S" : "");
+                                return vp_soln;
                             }
+                            free_vp_solution(vp_soln);
                         }
                     }
                 }
@@ -525,16 +515,16 @@ vp_solution_t solve_hvp_problem_METALIGHT(vp_problem_t vp_prob, int notargs[],
     char *itemsorts[] = { "DMAX", "DSUM", NULL };
     char *binsorts[] = { "AMAX", "ASUM", NULL };
     char **item_sort_name, **bin_sort_name;
-    int isCP, isR, isS, isE, w;
+    int isCP, isR, isS, w;
     int i;
     vp_solution_t vp_soln = NULL;
 
-    args[0] = BEST_FIT;
+    args[0] = FIRST_FIT;
     for (item_sort_name = itemsorts; *item_sort_name; item_sort_name++) {
         vp_soln = solve_hvp_problem_FITD(vp_prob, args, 
             get_vp_cmp_func(*item_sort_name), NULL);
         if (vp_soln && vp_soln->success) { 
-            sprintf(vp_soln->misc_output, "BF %s NONE", *item_sort_name);
+            sprintf(vp_soln->misc_output, "FF %s NONE", *item_sort_name);
             return vp_soln;
         }
         free_vp_solution(vp_soln);
@@ -570,7 +560,7 @@ vp_solution_t solve_hvp_problem_METALIGHT2(vp_problem_t vp_prob, int notargs[],
     char *itemsorts[] = { "DMAX", "DSUM", NULL };
     char *binsorts[] = { "AMAX", "ASUM", NULL };
     char **item_sort_name, **bin_sort_name;
-    int isCP, isR, isS, isE, w;
+    int isCP, isR, isS, w;
     int i;
     vp_solution_t vp_soln = NULL;
 
@@ -778,132 +768,3 @@ flexsched_solution_t HVP_scheduler(
     return HVP_solver(flex_prob, solve_hvp_problem, args, cmp_item_idxs, 
         cmp_bin_idxs);
 }
-
-#if 0
-flexsched_solution METAHVP_scheduler(char *name, char **options)
-{
-
-    flexsched_solution flex_soln = new_flexsched_solution();
-    flexsched_solution curr_soln = NULL;
-
-    int (*solve_hvp_problem)(vp_problem, int [], qsort_cmp_func, qsort_cmp_func)
-        = solve_hvp_problem_MCB;
-    int args[5] = {0, 0, 0, 0, 0};
-
-    char *sortnames[] = { "ALEX", "AMAX", "ASUM", "AMAXRATIO", "AMAXDIFF",
-        "DLEX", "DMAX", "DSUM", "DMAXRATIO", "DMAXDIFF", NULL };
-    char **item_sort_name, **bin_sort_name;
-
-    int isCP, isR, isS, isE, w;
-
-    double minyield, avgyield, maxminyield, maxavgyield;
-
-    int i;
-
-    maxminyield = -1.0;
-    maxavgyield = -1.0;
-
-    solve_hvp_problem = solve_hvp_problem_FITD;
-    for (isCP = 0; isCP <= 1; isCP++) {
-        args[0] = isCP;
-        for (item_sort_name = sortnames; *item_sort_name; item_sort_name++) {
-            for (bin_sort_name = sortnames; *bin_sort_name; bin_sort_name++) {
-                for (isR = 0; isR <= 1; isR++) {
-                    args[1] = isR;
-                    curr_soln = HVP_solver(solve_hvp_problem, args, 
-                        get_vp_cmp_func(*item_sort_name), 
-                        get_vp_cmp_func(*bin_sort_name));
-                    if (curr_soln->success) {
-                        flex_soln->success = 1;
-                        maximize_minimum_then_average_yield(curr_soln);
-                        minyield = compute_minimum_yield(curr_soln);
-                        avgyield = compute_average_yield(curr_soln);
-                        if (minyield > maxminyield || 
-                            (minyield > maxminyield - EPSILON && 
-                            avgyield > maxavgyield)) {
-                            maxminyield = minyield;
-                            maxavgyield = avgyield;
-                            for (i = 0; i < flex_prob->num_services; i++) {
-                                flex_soln->mapping[i] = curr_soln->mapping[i];
-                                flex_soln->scaled_yields[i] = 
-                                    curr_soln->scaled_yields[i];
-                            }
-                            sprintf(flex_soln->misc_output, "%s %s %s%s", 
-                                            isCP ? "BF" : "FF", 
-                                            *item_sort_name, 
-                                            *bin_sort_name,
-                                            isR  ? " R" : "");
-                        }
-                    }
-                    free_flexsched_solution(curr_soln);
-                }
-            }
-        }
-    }
-
-    solve_hvp_problem = solve_hvp_problem_MCB;
-    for (isCP = 0; isCP <= 1; isCP++) {
-        args[0] = isCP;
-        for (item_sort_name = sortnames; *item_sort_name; item_sort_name++) {
-            for (bin_sort_name = sortnames; *bin_sort_name; bin_sort_name++) {
-                for (w = 0; w <= flex_prob->num_rigid + flex_prob->num_fluid; 
-                    w++) {
-                    args[4] = w;
-                    for (isR = 0; isR <= 1; isR++) {
-                        args[1] = isR;
-                        for (isS = 0; isS <= 1; isS++) {
-                            args[2] = isS;
-                            for (isE = 0; isE <= 1; isE++) {
-                                args[3] = isE;
-                                curr_soln = HVP_solver(solve_hvp_problem, args, 
-                                    get_vp_cmp_func(*item_sort_name), 
-                                    get_vp_cmp_func(*bin_sort_name));
-                                if (curr_soln->success) {
-                                    flex_soln->success = 1;
-                                    maximize_minimum_then_average_yield(
-                                        curr_soln);
-                                    minyield = compute_minimum_yield(curr_soln);
-                                    avgyield = compute_average_yield(curr_soln);
-#if 0
-                                    printf(
-                                        "%s %s %s W%d%s%s%s\t\t\t\t%.3f\t%.3f\n"
-                                        , isCP ? "CP" : "PP", *item_sort_name, 
-                                        *bin_sort_name, w, isR  ? " R" : "", 
-                                        isS  ? " S" : "", isE  ? " E" : "", 
-                                        minyield, avgyield);
-#endif
-                                    if (minyield > maxminyield || 
-                                        (minyield > maxminyield - EPSILON &&
-                                        avgyield > maxavgyield)) {
-                                        maxminyield = minyield;
-                                        maxavgyield = avgyield;
-                                        for (i = 0; i < flex_prob->num_services;
-                                            i++) {
-                                            flex_soln->mapping[i] = 
-                                                curr_soln->mapping[i];
-                                            flex_soln->scaled_yields[i] =
-                                                curr_soln->scaled_yields[i];
-                                        }
-                                        sprintf(flex_soln->misc_output, 
-                                            "%s %s %s W%d%s%s%s", 
-                                            isCP ? "CP" : "PP", 
-                                            *item_sort_name, 
-                                            *bin_sort_name,
-                                            w, 
-                                            isR  ? " R" : "", 
-                                            isS  ? " S" : "",
-                                            isE  ? " E" : "");
-                                    }
-                                }
-                                free_flexsched_solution(curr_soln);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    return flex_soln;
-}
-#endif

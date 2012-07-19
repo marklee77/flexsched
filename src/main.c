@@ -8,21 +8,31 @@ struct implemented_scheduler_s {
 
 struct implemented_scheduler_s implemented_schedulers[] = {
     {"GREEDY",          GREEDY_scheduler,          1},
+/*
     {"METAGREEDY",      METAGREEDY_scheduler,      1},
     {"METAGREEDYLIGHT", METAGREEDYLIGHT_scheduler, 1},
+*/
     {"MILP",            MILP_scheduler,            1},
     {"LPBOUND",         LPBOUND_scheduler,         0},
+/*
     {"RRND",            LPROUNDING_scheduler,      1},
     {"RRNZ",            LPROUNDING_scheduler,      1},
+*/
+/*
     {"VP",              VP_scheduler,              1},
     {"METAVP",          VP_scheduler,              1},
+*/
     {"HVP",             HVP_scheduler,             1},
     {"METAHVP",         HVP_scheduler,             1},
+/*
     {"METAHVP2",        HVP_scheduler,             1},
     {"METAHVP3",        HVP_scheduler,             1},
+*/
     {"METAHVPLIGHT",    HVP_scheduler,             1},
+/*
     {"METAHVPLIGHT2",   HVP_scheduler,             1},
     {"METAHVPLIGHTB",   HVP_scheduler,             1},
+*/
 /*
     {"OLDMETAHVP",      METAHVP_scheduler,         1},
 */
@@ -459,7 +469,7 @@ int main(int argc, char *argv[])
     struct timeval time1, time2;
     flexsched_problem_t flex_prob = NULL;
     flexsched_solution_t flex_soln = NULL;
-    double elasped_seconds;
+    double elapsed_seconds;
     double expected_minimum_yield, expected_average_yield;
     double *actual_yields;
     double cap_minimum_yield, cap_average_yield;
@@ -600,8 +610,8 @@ int main(int argc, char *argv[])
         }
 
         // Compute elapsed time
-        elasped_seconds  = (double)(time2.tv_sec - time1.tv_sec);
-        elasped_seconds += (double)(time2.tv_usec - time1.tv_usec) / 1000000.0;
+        elapsed_seconds  = (double)(time2.tv_sec - time1.tv_sec);
+        elapsed_seconds += (double)(time2.tv_usec - time1.tv_usec) / 1000000.0;
   
         // Print output
         fprintf(output, "%s|", (*sched)->string);
@@ -633,7 +643,7 @@ int main(int argc, char *argv[])
             fprintf(output, "%.3f|", -1.0);
             fprintf(output, "%.3f|", -1.0);
         }
-        fprintf(output, "%.3f|", elasped_seconds);
+        fprintf(output, "%.3f|", elapsed_seconds);
         fprintf(output, "%s\n", flex_soln->misc_output);
 
         // clean up

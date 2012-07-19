@@ -1,8 +1,28 @@
+Contact: Mark Stillwell <m.stillwell@cranfield.ac.uk>
+
+Portions of this software were also developed by Henri Casanova
+<henric@hawaii.edu>.
+
 ===========================================================================
 
 REQUIREMENTS:
 
 GLPK should be installed.
+
+===========================================================================
+
+COMPILE:
+
+From the directory you checked out of git or unpacked from the tarball:
+
+mkdir build
+cd build
+cmake ..
+make
+
+should create ./src/flexsched
+
+Sorry, there's no easy-install package at the moment.
 
 ===========================================================================
 
@@ -114,5 +134,9 @@ minimum yield.
 
 
 * METAHVP
+  Try all HVP heuristics at each step of the binary search to maximize the
+minimum yield.
+
+There may be additional algorithms that are not listed here.
 
 

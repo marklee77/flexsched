@@ -9,10 +9,10 @@ if len(sys.argv) < 6:
         " <service spec file>"
     sys.exit()
 
-seed         = int(sys.argv[1])
-numservers   = int(sys.argv[2])
-numservices  = int(sys.argv[3])
-server_fname = sys.argv[4]
+seed          = int(sys.argv[1])
+numservers    = int(sys.argv[2])
+numservices   = int(sys.argv[3])
+server_fname  = sys.argv[4]
 service_fname = sys.argv[5]
 
 random.seed(seed)
