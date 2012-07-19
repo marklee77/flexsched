@@ -189,7 +189,7 @@ int solve_linear_program(linear_program_t lp, int rational)
     } else {
         glp_iocp parm;
         glp_init_iocp(&parm);
-        parm.msg_lev = GLP_MSG_ERR;
+        parm.msg_lev = GLP_MSG_OFF;
         parm.tm_lim = GLPK_TIME_LIMIT;
         parm.presolve = GLP_ON;
         parm.binarize = GLP_ON;

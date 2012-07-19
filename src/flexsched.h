@@ -141,7 +141,5 @@ typedef int(qsort_cmp_func)(void *, const void *, const void *);
     ((compar) ? (qsort_r(base, nel, width, thunk, compar)) : 0)
 #define QSORT_CMP_CALL(compar, thunk, x, y) \
     ((compar) ? compar(thunk, x, y) : 0)
-
 #endif
-
 #endif

@@ -1,11 +1,22 @@
-FIND_PATH(GLPK_INCLUDE_DIR
-    NAMES glpk.h
-    PATHS /usr/include /usr/include/glpk $ENV{GLPK_DIR}/include
-    DOC "Directory where GLPK header files are stored")
+find_package(PkgConfig)
+pkg_check_modules(PC_GLPK glpk)
+set(GLPK_DEFINITIONS ${PC_GLPK_CFLAGS_OTHER})
 
-FIND_LIBRARY(GLPK_LIBRARY
-    NAMES glpk 
-    PATHS /usr/lib $ENV{GLPK_DIR}/lib)
+FIND_PATH(GLPK_INCLUDE_DIR glpk.h
+    HINTS 
+        ${PC_GLPK_INCLUDEDIR} 
+        ${PC_GLPK_INCLUDE_DIRS} 
+        $ENV{GLPK_DIR}/include 
+        $ENV{C_INCLUDE_PATH}
+    PATH_SUFFIXES glpk)
+set(GLPK_INCLUDE_DIRS ${GLPK_INCLUDE_DIR})
+
+FIND_LIBRARY(GLPK_LIBRARY glpk 
+    HINTS
+        ${PC_GLPK_LIBDIR} 
+        ${PC_GLPK_LIBRARY_DIRS} 
+        $ENV{GLPK_DIR}/lib)
+set(GLPK_LIBRARIES ${GLPK_LIBRARY})
 
 include(FindPackageHandleStandardArgs)
 
