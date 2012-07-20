@@ -6,7 +6,7 @@ vp_problem_t new_vp_problem(flexsched_problem_t flex_prob, double yield)
     int i, j;
     vp_problem_t vp_prob = (vp_problem_t)malloc(sizeof(struct vp_problem_s));
     vp_prob->num_dims = flex_prob->num_resources;
-    vp_prob->num_items = flex_prob->num_services;
+    vp_prob->num_items = flex_prob->num_jobs;
     vp_prob->items = 
         (vp_vector_t *)calloc(vp_prob->num_items, sizeof(vp_vector_t));
     for (i = 0; i< vp_prob->num_items; i++) {
@@ -18,14 +18,14 @@ vp_problem_t new_vp_problem(flexsched_problem_t flex_prob, double yield)
             (double *)calloc(vp_prob->items[i]->num_dims, sizeof(double));
         for (j = 0; j < vp_prob->items[i]->num_dims; j++) {
             vp_prob->items[i]->units[j] = 
-                flex_prob->services[i]->unit_rigid_requirements[j] +
-                yield*flex_prob->services[i]->unit_fluid_needs[j];
+                flex_prob->jobs[i]->unit_rigid_requirements[j] +
+                yield*flex_prob->jobs[i]->unit_fluid_needs[j];
             vp_prob->items[i]->totals[j] =
-                flex_prob->services[i]->total_rigid_requirements[j] +
-                yield*flex_prob->services[i]->total_fluid_needs[j];
+                flex_prob->jobs[i]->total_rigid_requirements[j] +
+                yield*flex_prob->jobs[i]->total_fluid_needs[j];
         }
     }
-    vp_prob->num_bins = flex_prob->num_servers;
+    vp_prob->num_bins = flex_prob->num_nodes;
     vp_prob->bins = 
         (vp_vector_t *)calloc(vp_prob->num_bins, sizeof(vp_vector_t));
     for (i = 0; i< vp_prob->num_bins; i++) {
@@ -37,9 +37,9 @@ vp_problem_t new_vp_problem(flexsched_problem_t flex_prob, double yield)
             (double *)calloc(vp_prob->bins[i]->num_dims, sizeof(double));
         for (j = 0; j < vp_prob->bins[i]->num_dims; j++) {
             vp_prob->bins[i]->units[j] = 
-                flex_prob->servers[i]->unit_capacities[j];
+                flex_prob->nodes[i]->unit_capacities[j];
             vp_prob->bins[i]->totals[j] = 
-                flex_prob->servers[i]->total_capacities[j];
+                flex_prob->nodes[i]->total_capacities[j];
         }
     }
 

@@ -673,7 +673,7 @@ flexsched_solution_t HVP_solver(flexsched_problem_t flex_prob,
             yieldlb = yield;
             // Save the computed mapping
             flex_soln->success = 1;
-            for (i = 0; i < flex_prob->num_services; i++) {
+            for (i = 0; i < flex_prob->num_jobs; i++) {
                 flex_soln->mapping[i] = vp_soln->mapping[i];
                 flex_soln->yields[i] = yield;
             }

@@ -48,6 +48,9 @@ typedef struct job_s {
     double *unit_fluid_needs;
     double *total_rigid_requirements;
     double *total_fluid_needs;
+
+    double *actual_unit_fluid_needs;
+    double *actual_total_fluid_needs;
 } *job_t;
 
 typedef struct flexsched_problem_s {
@@ -61,7 +64,7 @@ typedef struct flexsched_problem_s {
 typedef struct flexsched_solution_s {
     flexsched_problem_t prob;
     int success;
-    int **mapping;
+    int *mapping;
     double *yields;
     char misc_output[180];
 } *flexsched_solution_t;
@@ -71,8 +74,8 @@ typedef struct flexsched_solution_s {
 /*********************************/
 
 /* utility function prototypes */
-flexsched_problem_t new_flexsched_problem(int, int, int, node_t*, job_t*);
-void free_flexsched_problem(flexsched_problem_t);
+//flexsched_problem_t new_flexsched_problem(int, int, int, node_t*, job_t*);
+//void free_flexsched_problem(flexsched_problem_t);
 
 flexsched_solution_t new_flexsched_solution(flexsched_problem_t);
 void free_flexsched_solution(flexsched_solution_t);

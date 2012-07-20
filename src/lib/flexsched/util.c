@@ -82,17 +82,17 @@ flexsched_solution_t new_flexsched_solution(flexsched_problem_t flex_prob)
     flex_soln->misc_output[0] = '\0';
 
     if (!(flex_soln->mapping = 
-        (int *)calloc(flex_prob->num_services, sizeof(int)))) {
+        (int *)calloc(flex_prob->num_jobs, sizeof(int)))) {
         fprintf(stderr, 
                 "couldn't allocate sufficient memory for new mapping!\n");
         exit(1);
     }
     if (!(flex_soln->yields =
-        (double *)calloc(flex_prob->num_services, sizeof(double)))) {
+        (double *)calloc(flex_prob->num_jobs, sizeof(double)))) {
         fprintf(stderr, "couldn't allocate sufficient memory for yields!\n");
         exit(1);
     }
-    for (i = 0; i < flex_prob->num_services; i++) {
+    for (i = 0; i < flex_prob->num_jobs; i++) {
         flex_soln->mapping[i] = -1;
         flex_soln->yields[i] = 0.0;
     }
@@ -109,120 +109,120 @@ void free_flexsched_solution(flexsched_solution_t flex_soln)
 }
 
 inline int unit_requirements_within_capacity_in_dim(
-    flexsched_problem_t flex_prob, int service, int server, int dim)
+    flexsched_problem_t flex_prob, int job, int node, int dim)
 {
-    return flex_prob->services[service]->unit_rigid_requirements[dim]
-        <= flex_prob->servers[server]->unit_capacities[dim] - EPSILON;
+    return flex_prob->jobs[job]->unit_rigid_requirements[dim]
+        <= flex_prob->nodes[node]->unit_capacities[dim] - EPSILON;
 }
 
 int unit_requirements_within_capacity(
-    flexsched_problem_t flex_prob, int service, int server) 
+    flexsched_problem_t flex_prob, int job, int node) 
 {
     int i;
     for (i = 0; i < flex_prob->num_resources; i++) {
-        if (!unit_requirements_within_capacity_in_dim(flex_prob, service, 
-            server, i)) return 0;
+        if (!unit_requirements_within_capacity_in_dim(flex_prob, job, 
+            node, i)) return 0;
     }
     return 1;
 }
 
 inline int unit_allocation_at_yield_within_capacity_in_dim(flexsched_problem_t 
-    flex_prob, int service, double yield, int server, int dim) 
+    flex_prob, int job, double yield, int node, int dim) 
 {
-    return flex_prob->services[service]->unit_rigid_requirements[dim] +
-        yield * flex_prob->services[service]->unit_fluid_needs[dim]
-        < flex_prob->servers[server]->unit_capacities[dim] + EPSILON;
+    return flex_prob->jobs[job]->unit_rigid_requirements[dim] +
+        yield * flex_prob->jobs[job]->unit_fluid_needs[dim]
+        < flex_prob->nodes[node]->unit_capacities[dim] + EPSILON;
 }
 
 // FIXME: painfully hacky
 inline int unit_allocation_at_yield_within_capacity_in_dim2(flexsched_problem_t 
-    flex_prob, int service, double yield, int server, int dim) 
+    flex_prob, int job, double yield, int node, int dim) 
 {
-    return flex_prob->services[service]->unit_rigid_requirements[dim] +
-        yield * flex_prob->services[service]->actual_unit_fluid_needs[dim]
-        < flex_prob->servers[server]->unit_capacities[dim] + EPSILON;
+    return flex_prob->jobs[job]->unit_rigid_requirements[dim] +
+        yield * flex_prob->jobs[job]->actual_unit_fluid_needs[dim]
+        < flex_prob->nodes[node]->unit_capacities[dim] + EPSILON;
 }
 
 int unit_allocation_at_yield_within_capacity(
-    flexsched_problem_t flex_prob, int service, double yield, int server) 
+    flexsched_problem_t flex_prob, int job, double yield, int node) 
 {
     int i;
     for (i = 0; i < flex_prob->num_resources; i++) {
-        if (!unit_allocation_at_yield_within_capacity_in_dim(flex_prob, service,
-            yield, server, i)) return 0;
+        if (!unit_allocation_at_yield_within_capacity_in_dim(flex_prob, job,
+            yield, node, i)) return 0;
     }
     return 1;
 }
 
 // not really necessary...
-void put_service_on_server(
-    flexsched_solution_t flex_soln, int service, int server) 
+void put_job_on_node(
+    flexsched_solution_t flex_soln, int job, int node) 
 {
-    flex_soln->mapping[service] = server;
+    flex_soln->mapping[job] = node;
     return;
 }
 
 double compute_allocated_resource(
-    flexsched_solution_t flex_soln, int server, int dim)
+    flexsched_solution_t flex_soln, int node, int dim)
 {
     double allocated_resource = EPSILON;
     int i;
-    for (i = 0; i < flex_soln->prob->num_services; i++) {
-        if (flex_soln->mapping[i] != server) continue;
+    for (i = 0; i < flex_soln->prob->num_jobs; i++) {
+        if (flex_soln->mapping[i] != node) continue;
         allocated_resource +=
-            flex_soln->prob->services[i]->total_rigid_requirements[dim] +
+            flex_soln->prob->jobs[i]->total_rigid_requirements[dim] +
             flex_soln->yields[i]*
-                flex_soln->prob->services[i]->total_fluid_needs[dim];
+                flex_soln->prob->jobs[i]->total_fluid_needs[dim];
     }
     return allocated_resource;
 }
 
-double compute_available_resource(flexsched_solution_t flex_soln, int server, 
+double compute_available_resource(flexsched_solution_t flex_soln, int node, 
     int dim)
 {
     double allocated_resource = EPSILON; 
     int i;
 
-    for (i = 0; i < flex_soln->prob->num_services; i++) {
-        if (flex_soln->mapping[i] != server) continue;
+    for (i = 0; i < flex_soln->prob->num_jobs; i++) {
+        if (flex_soln->mapping[i] != node) continue;
         allocated_resource += 
-            flex_soln->prob->services[i]->total_rigid_requirements[dim];
+            flex_soln->prob->jobs[i]->total_rigid_requirements[dim];
     }
 
-    return MAX(0.0, flex_soln->prob->servers[server]->total_capacities[dim] - 
+    return MAX(0.0, flex_soln->prob->nodes[node]->total_capacities[dim] - 
         allocated_resource); 
 }
 
-double compute_fluid_load(flexsched_solution_t flex_soln, int server, int dim)
+double compute_fluid_load(flexsched_solution_t flex_soln, int node, int dim)
 {
     double fluid_load = 0.0;
     int i;
 
-    for (i = 0; i < flex_soln->prob->num_services; i++) {
-        if (flex_soln->mapping[i] != server) continue;
-        fluid_load += flex_soln->prob->services[i]->total_fluid_needs[dim];
+    for (i = 0; i < flex_soln->prob->num_jobs; i++) {
+        if (flex_soln->mapping[i] != node) continue;
+        fluid_load += flex_soln->prob->jobs[i]->total_fluid_needs[dim];
     }
 
     return fluid_load; 
 }
 
 int total_requirements_within_available_capacity_in_dim(
-    flexsched_solution_t flex_soln, int service, int server, int dim)
+    flexsched_solution_t flex_soln, int job, int node, int dim)
 {
-    return flex_soln->prob->services[service]->total_rigid_requirements[dim]
-        <= compute_available_resource(flex_soln, server, dim) - EPSILON;
+    return flex_soln->prob->jobs[job]->total_rigid_requirements[dim]
+        <= compute_available_resource(flex_soln, node, dim) - EPSILON;
 }
 
-int service_can_fit_on_server(
-    flexsched_solution_t flex_soln, int service, int server)
+int job_can_fit_on_node(
+    flexsched_solution_t flex_soln, int job, int node)
 {
     int i;
 
     for (i = 0; i < flex_soln->prob->num_resources; i++)
-        if (!unit_requirements_within_capacity_in_dim(flex_soln->prob, service, 
-            server, i) || 
+        if (!unit_requirements_within_capacity_in_dim(flex_soln->prob, job, 
+            node, i) || 
             !total_requirements_within_available_capacity_in_dim(flex_soln, 
-                service, server, i)) return 0;
+                job, node, i)) return 0;
 
     return 1;
 }
@@ -236,18 +236,18 @@ void initialize_global_resource_availabilities_and_loads(
     int i, j;
 
     global_available_resources = 
-        (double **)calloc(flex_prob->num_servers, sizeof(double *));
+        (double **)calloc(flex_prob->num_nodes, sizeof(double *));
     global_fluid_loads = 
-        (double **)calloc(flex_prob->num_servers, sizeof(double *));
+        (double **)calloc(flex_prob->num_nodes, sizeof(double *));
 
-    for (i = 0; i < flex_prob->num_servers; i++) {
+    for (i = 0; i < flex_prob->num_nodes; i++) {
         global_available_resources[i] = 
             (double *)calloc(flex_prob->num_resources, sizeof(double));
         global_fluid_loads[i] = 
             (double *)calloc(flex_prob->num_resources, sizeof(double));
         for (j = 0; j < flex_prob->num_resources; j++) {
             global_available_resources[i][j] =
-                flex_prob->servers[i]->total_capacities[j];
+                flex_prob->nodes[i]->total_capacities[j];
             global_fluid_loads[i][j] = 0.0;
         }
     }
@@ -258,7 +258,7 @@ void free_global_resource_availabilities_and_loads(
 {
     int i;
 
-    for (i = 0; i < flex_prob->num_servers; i++) {
+    for (i = 0; i < flex_prob->num_nodes; i++) {
         free(global_available_resources[i]);
         free(global_fluid_loads[i]);
     }
@@ -270,58 +270,58 @@ void free_global_resource_availabilities_and_loads(
     return;
 }
 
-void put_service_on_server_fast(
-    flexsched_solution_t flex_soln, int service, int server) 
+void put_job_on_node_fast(
+    flexsched_solution_t flex_soln, int job, int node) 
 {
     int i;
     
-    flex_soln->mapping[service] = server;
+    flex_soln->mapping[job] = node;
 
     for (i = 0; i < flex_soln->prob->num_resources; i++) {
-        global_available_resources[server][i] -=
-            flex_soln->prob->services[service]->total_rigid_requirements[i];
-        global_fluid_loads[server][i] +=
-            flex_soln->prob->services[service]->total_fluid_needs[i];
+        global_available_resources[node][i] -=
+            flex_soln->prob->jobs[job]->total_rigid_requirements[i];
+        global_fluid_loads[node][i] +=
+            flex_soln->prob->jobs[job]->total_fluid_needs[i];
     }
 
     return;
 }
 
 inline double compute_available_resource_fast(
-    flexsched_solution_t flex_soln, int server, int dim)
+    flexsched_solution_t flex_soln, int node, int dim)
 {
-    return global_available_resources[server][dim];
+    return global_available_resources[node][dim];
 }
 
 inline double compute_fluid_load_fast(
-    flexsched_solution_t flex_soln, int server, int dim)
+    flexsched_solution_t flex_soln, int node, int dim)
 {
-    return global_fluid_loads[server][dim];
+    return global_fluid_loads[node][dim];
 }
 
 inline int total_requirements_within_available_capacity_in_dim_fast(
-    flexsched_solution_t flex_soln, int service, int server, int dim)
+    flexsched_solution_t flex_soln, int job, int node, int dim)
 {
-    return flex_soln->prob->services[service]->total_rigid_requirements[dim]
-        <= global_available_resources[server][dim] - EPSILON;
+    return flex_soln->prob->jobs[job]->total_rigid_requirements[dim]
+        <= global_available_resources[node][dim] - EPSILON;
 }
 
-int service_can_fit_on_server_fast(
-    flexsched_solution_t flex_soln, int service, int server)
+int job_can_fit_on_node_fast(
+    flexsched_solution_t flex_soln, int job, int node)
 {
     int i;
 
     for (i = 0; i < flex_soln->prob->num_resources; i++)
-        if (!unit_requirements_within_capacity_in_dim(flex_soln->prob, service, 
-            server, i) || 
+        if (!unit_requirements_within_capacity_in_dim(flex_soln->prob, job, 
+            node, i) || 
             !total_requirements_within_available_capacity_in_dim_fast(flex_soln,
-                service, server, i)) return 0;
+                job, node, i)) return 0;
 
     return 1;
 }
 
-void maximize_minimum_yield_on_server(
-    flexsched_solution_t flex_soln, int server)
+void maximize_minimum_yield_on_node(
+    flexsched_solution_t flex_soln, int node)
 {
     int i, j;
     double load;
@@ -329,28 +329,28 @@ void maximize_minimum_yield_on_server(
 
     // yield limited by total needs
     for (i = 0; i < flex_soln->prob->num_resources; i++) {
-        load = compute_fluid_load(flex_soln, server, i);
+        load = compute_fluid_load(flex_soln, node, i);
         if (load > 0.0) { 
             minyield = MIN(minyield, 
-                compute_available_resource(flex_soln, server, i) / load);
+                compute_available_resource(flex_soln, node, i) / load);
         }
     }
 
     // yield limited by unit needs
-    for (i = 0; i < flex_soln->prob->num_services; i++) {
-        if (flex_soln->mapping[i] != server) continue;
+    for (i = 0; i < flex_soln->prob->num_jobs; i++) {
+        if (flex_soln->mapping[i] != node) continue;
         for (j = 0; j < flex_soln->prob->num_resources; j++) {
-            if (flex_soln->prob->services[i]->unit_fluid_needs[j] > 0.0) {
+            if (flex_soln->prob->jobs[i]->unit_fluid_needs[j] > 0.0) {
                 minyield = MIN(minyield, 
-                    (flex_soln->prob->servers[server]->unit_capacities[j] -
-                      flex_soln->prob->services[i]->unit_rigid_requirements[j])
-                    / flex_soln->prob->services[i]->unit_fluid_needs[j]);
+                    (flex_soln->prob->nodes[node]->unit_capacities[j] -
+                      flex_soln->prob->jobs[i]->unit_rigid_requirements[j])
+                    / flex_soln->prob->jobs[i]->unit_fluid_needs[j]);
             }
         }
     }
 
-    for (i = 0; i < flex_soln->prob->num_services; i++) {
-        if (flex_soln->mapping[i] != server) continue;
+    for (i = 0; i < flex_soln->prob->num_jobs; i++) {
+        if (flex_soln->mapping[i] != node) continue;
         flex_soln->yields[i] = MAX(EPSILON, minyield - EPSILON);
     }
 
@@ -359,7 +359,7 @@ void maximize_minimum_yield_on_server(
 
 double compute_minimum_yield(flexsched_solution_t flex_soln)
 {
-    return double_array_min(flex_soln->yields, flex_soln->prob->num_services);
+    return double_array_min(flex_soln->yields, flex_soln->prob->num_jobs);
 }
 
 void maximize_minimum_yield(flexsched_solution_t flex_soln)
@@ -367,11 +367,11 @@ void maximize_minimum_yield(flexsched_solution_t flex_soln)
     int i;
     double minyield;
 
-    for (i = 0; i < flex_soln->prob->num_servers; i++) {
-        maximize_minimum_yield_on_server(flex_soln, i);
+    for (i = 0; i < flex_soln->prob->num_nodes; i++) {
+        maximize_minimum_yield_on_node(flex_soln, i);
     }
     minyield = compute_minimum_yield(flex_soln);
-    for (i = 0; i < flex_soln->prob->num_services; i++) {
+    for (i = 0; i < flex_soln->prob->num_jobs; i++) {
         flex_soln->yields[i] = minyield;
     }
 
@@ -380,6 +380,7 @@ void maximize_minimum_yield(flexsched_solution_t flex_soln)
 
 // FIXME: organizationally I don't know if it makes more sense to put this in
 // or linearprog.c
+/*
 void maximize_average_yield_given_minimum(flexsched_solution_t, double);
 
 void maximize_minimum_then_average_yield(flexsched_solution_t flex_soln)
@@ -391,15 +392,16 @@ void maximize_minimum_then_average_yield(flexsched_solution_t flex_soln)
     maximize_average_yield_given_minimum(flex_soln, minyield);
     return;
 }
+*/
 
 double compute_average_yield(flexsched_solution_t flex_soln)
 {
     int i;
     double sumyield = 0.0;
-    for (i = 0; i < flex_soln->prob->num_services; i++) {
+    for (i = 0; i < flex_soln->prob->num_jobs; i++) {
         sumyield += flex_soln->yields[i];
     }
-    return (sumyield / flex_soln->prob->num_services);
+    return (sumyield / flex_soln->prob->num_jobs);
 }
 
 double compute_utilization(flexsched_solution_t flex_soln)
@@ -408,21 +410,21 @@ double compute_utilization(flexsched_solution_t flex_soln)
     double total_capacity = 0.0;
     double total_alloc = 0.0;
 
-    for (i = 0; i < flex_soln->prob->num_servers; i++) {
+    for (i = 0; i < flex_soln->prob->num_nodes; i++) {
         total_capacity +=
-            double_array_sum(flex_soln->prob->servers[i]->total_capacities,
+            double_array_sum(flex_soln->prob->nodes[i]->total_capacities,
                 flex_soln->prob->num_resources);
     }
 
     if (total_capacity <= 0.0) return 1.0;
 
-    for (i = 0; i < flex_soln->prob->num_services; i++) {
+    for (i = 0; i < flex_soln->prob->num_jobs; i++) {
         total_alloc +=
             double_array_sum(
-                flex_soln->prob->services[i]->total_rigid_requirements, 
+                flex_soln->prob->jobs[i]->total_rigid_requirements, 
                 flex_soln->prob->num_resources) + 
             flex_soln->yields[i] * 
-              double_array_sum(flex_soln->prob->services[i]->total_fluid_needs,
+              double_array_sum(flex_soln->prob->jobs[i]->total_fluid_needs,
                     flex_soln->prob->num_resources);
     }
 
@@ -439,19 +441,19 @@ int sanity_check(flexsched_problem_t flex_prob, int mapping[], double yields[])
 {
     int i, j, k;
     int retval = 0;
-    double allocated_resources[flex_prob->num_servers][flex_prob->num_resources];
+    double allocated_resources[flex_prob->num_nodes][flex_prob->num_resources];
 
-    // check that each service is mapped to a server and yields are <= 1.0
-    for (i = 0; i < flex_prob->num_services; i++) {
+    // check that each job is mapped to a node and yields are <= 1.0
+    for (i = 0; i < flex_prob->num_jobs; i++) {
         if (mapping[i] < 0 || 
-            mapping[i] >= flex_prob->num_servers) {
+            mapping[i] >= flex_prob->num_nodes) {
             fprintf(stderr, 
-                "Error: Service %d is mapped to invalid server %d\n.", i, 
+                "Error: Service %d is mapped to invalid node %d\n.", i, 
                 mapping[i]);
             retval = 1;
         }
         if (yields[i] < EPSILON || yields[i] > 1.0) {
-            fprintf(stderr, "Error: Allocation of service %d is %.2f.\n",
+            fprintf(stderr, "Error: Allocation of job %d is %.2f.\n",
                 i, yields[i]);
             retval = 1;
         }
@@ -460,45 +462,45 @@ int sanity_check(flexsched_problem_t flex_prob, int mapping[], double yields[])
     if (retval) return retval;
 
     // initialize allocated resources
-    for (i = 0; i < flex_prob->num_servers; i++) {
+    for (i = 0; i < flex_prob->num_nodes; i++) {
         for (j = 0; j < flex_prob->num_resources; j++) {
             allocated_resources[i][j] = 0.0;
         }
     }
 
     // check unit allocations and sum up allocations
-    for (i = 0; i < flex_prob->num_services; i++) {
+    for (i = 0; i < flex_prob->num_jobs; i++) {
         for (j = 0; j < flex_prob->num_resources; j++) {
             if(!unit_allocation_at_yield_within_capacity_in_dim(flex_prob,
                 i, yields[i], mapping[i], j))
             {
                 fprintf(stderr, 
-                    "Error: Allocation of service %d to server %d with yield %.3f exceeds unit capacity in resource dimension %d (%.3f + %.3f = %.3f/%.3f).\n", 
+                    "Error: Allocation of job %d to node %d with yield %.3f exceeds unit capacity in resource dimension %d (%.3f + %.3f = %.3f/%.3f).\n", 
                     i, mapping[i], yields[i], j,
-                    flex_prob->services[i]->unit_rigid_requirements[j],
+                    flex_prob->jobs[i]->unit_rigid_requirements[j],
                     yields[i] * 
-                        flex_prob->services[i]->unit_fluid_needs[j], 
-                    flex_prob->services[i]->unit_rigid_requirements[j] + 
+                        flex_prob->jobs[i]->unit_fluid_needs[j], 
+                    flex_prob->jobs[i]->unit_rigid_requirements[j] + 
                         yields[i] * 
-                        flex_prob->services[i]->unit_fluid_needs[j], 
-                    flex_prob->servers[mapping[i]]->unit_capacities[j]);
+                        flex_prob->jobs[i]->unit_fluid_needs[j], 
+                    flex_prob->nodes[mapping[i]]->unit_capacities[j]);
                 retval = 1;
             }
             allocated_resources[mapping[i]][j] += 
-                flex_prob->services[i]->total_rigid_requirements[j] + 
+                flex_prob->jobs[i]->total_rigid_requirements[j] + 
                 yields[i] * 
-                    flex_prob->services[i]->total_fluid_needs[j];
+                    flex_prob->jobs[i]->total_fluid_needs[j];
         }
     }
 
-    for (i = 0; i < flex_prob->num_servers; i++) {
+    for (i = 0; i < flex_prob->num_nodes; i++) {
         for (j = 0; j < flex_prob->num_resources; j++) {
-            if (flex_prob->servers[i]->total_capacities[j] + EPSILON <= 
+            if (flex_prob->nodes[i]->total_capacities[j] + EPSILON <= 
                 allocated_resources[i][j]) {
                 fprintf(stderr, 
-                    "Error: Total resource allocation on server %d exceeds capacity in dimension %d (%.6f/%.6f).\n",
+                    "Error: Total resource allocation on node %d exceeds capacity in dimension %d (%.6f/%.6f).\n",
                     i, j, allocated_resources[i][j], 
-                    flex_prob->servers[i]->total_capacities[j]);
+                    flex_prob->nodes[i]->total_capacities[j]);
                 retval = 1;
             }
         }
@@ -511,19 +513,19 @@ int sanity_check2(flexsched_problem_t flex_prob, int mapping[], double yields[])
 {
     int i, j, k;
     int retval = 0;
-    double allocated_resources[flex_prob->num_servers][flex_prob->num_resources];
+    double allocated_resources[flex_prob->num_nodes][flex_prob->num_resources];
 
-    // check that each service is mapped to a server and yields are <= 1.0
-    for (i = 0; i < flex_prob->num_services; i++) {
+    // check that each job is mapped to a node and yields are <= 1.0
+    for (i = 0; i < flex_prob->num_jobs; i++) {
         if (mapping[i] < 0 || 
-            mapping[i] >= flex_prob->num_servers) {
+            mapping[i] >= flex_prob->num_nodes) {
             fprintf(stderr, 
-                "Error: Service %d is mapped to invalid server %d\n.", i, 
+                "Error: Service %d is mapped to invalid node %d\n.", i, 
                 mapping[i]);
             retval = 1;
         }
         if (yields[i] < EPSILON || yields[i] > 1.0) {
-            fprintf(stderr, "Error: Allocation of service %d is %.2f.\n",
+            fprintf(stderr, "Error: Allocation of job %d is %.2f.\n",
                 i, yields[i]);
             retval = 1;
         }
@@ -532,45 +534,45 @@ int sanity_check2(flexsched_problem_t flex_prob, int mapping[], double yields[])
     if (retval) return retval;
 
     // initialize allocated resources
-    for (i = 0; i < flex_prob->num_servers; i++) {
+    for (i = 0; i < flex_prob->num_nodes; i++) {
         for (j = 0; j < flex_prob->num_resources; j++) {
             allocated_resources[i][j] = 0.0;
         }
     }
 
     // check unit allocations and sum up allocations
-    for (i = 0; i < flex_prob->num_services; i++) {
+    for (i = 0; i < flex_prob->num_jobs; i++) {
         for (j = 0; j < flex_prob->num_resources; j++) {
             if(!unit_allocation_at_yield_within_capacity_in_dim2(flex_prob,
                 i, yields[i], mapping[i], j))
             {
                 fprintf(stderr, 
-                    "Error: Allocation of service %d to server %d with yield %.3f exceeds unit capacity in resource dimension %d (%.3f + %.3f = %.3f/%.3f).\n", 
+                    "Error: Allocation of job %d to node %d with yield %.3f exceeds unit capacity in resource dimension %d (%.3f + %.3f = %.3f/%.3f).\n", 
                     i, mapping[i], yields[i], j,
-                    flex_prob->services[i]->unit_rigid_requirements[j],
+                    flex_prob->jobs[i]->unit_rigid_requirements[j],
                     yields[i] * 
-                        flex_prob->services[i]->actual_unit_fluid_needs[j], 
-                    flex_prob->services[i]->unit_rigid_requirements[j] + 
+                        flex_prob->jobs[i]->actual_unit_fluid_needs[j], 
+                    flex_prob->jobs[i]->unit_rigid_requirements[j] + 
                         yields[i] * 
-                        flex_prob->services[i]->actual_unit_fluid_needs[j], 
-                    flex_prob->servers[mapping[i]]->unit_capacities[j]);
+                        flex_prob->jobs[i]->actual_unit_fluid_needs[j], 
+                    flex_prob->nodes[mapping[i]]->unit_capacities[j]);
                 retval = 1;
             }
             allocated_resources[mapping[i]][j] += 
-                flex_prob->services[i]->total_rigid_requirements[j] + 
+                flex_prob->jobs[i]->total_rigid_requirements[j] + 
                 yields[i] * 
-                    flex_prob->services[i]->actual_total_fluid_needs[j];
+                    flex_prob->jobs[i]->actual_total_fluid_needs[j];
         }
     }
 
-    for (i = 0; i < flex_prob->num_servers; i++) {
+    for (i = 0; i < flex_prob->num_nodes; i++) {
         for (j = 0; j < flex_prob->num_resources; j++) {
-            if (flex_prob->servers[i]->total_capacities[j] + EPSILON <= 
+            if (flex_prob->nodes[i]->total_capacities[j] + EPSILON <= 
                 allocated_resources[i][j]) {
                 fprintf(stderr, 
-                    "Error: Total resource allocation on server %d exceeds capacity in dimension %d (%.6f/%.6f).\n",
+                    "Error: Total resource allocation on node %d exceeds capacity in dimension %d (%.6f/%.6f).\n",
                     i, j, allocated_resources[i][j], 
-                    flex_prob->servers[i]->total_capacities[j]);
+                    flex_prob->nodes[i]->total_capacities[j]);
                 retval = 1;
             }
         }
