@@ -1,1 +1,1 @@
-add_subdirectory(schedulers)
+add_subdirectory(flexsched)

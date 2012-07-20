@@ -1,1 +1,1 @@
-add_subdirectory(flexsched)
+add_subdirectory(staticsched)
