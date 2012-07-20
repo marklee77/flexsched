@@ -37,34 +37,33 @@
 /****** STRUCTURES AND TYPEDEFS ******/
 /*************************************/
 
-typedef struct server_s {
+typedef struct node_s {
     double *unit_capacities;
     double *total_capacities;
-} *server_t;
+} *node_t;
 
-typedef struct service_s {
+typedef struct job_s {
+    int num_tasks;
     double *unit_rigid_requirements;
     double *unit_fluid_needs;
     double *total_rigid_requirements;
     double *total_fluid_needs;
-    double *actual_unit_fluid_needs;
-    double *actual_total_fluid_needs;
-} *service_t;
+} *job_t;
 
 typedef struct flexsched_problem_s {
     int num_resources;
-    int num_servers; 
-    int num_services;
-    server_t *servers;
-    service_t *services;
+    int num_nodes; 
+    int num_jobs;
+    node_t *nodes;
+    job_t *jobs;
 } *flexsched_problem_t;
 
 typedef struct flexsched_solution_s {
     flexsched_problem_t prob;
     int success;
-    int *mapping;
+    int **mapping;
     double *yields;
-    char misc_output[100];
+    char misc_output[180];
 } *flexsched_solution_t;
 
 /*********************************/
@@ -72,6 +71,9 @@ typedef struct flexsched_solution_s {
 /*********************************/
 
 /* utility function prototypes */
+flexsched_problem_t new_flexsched_problem(int, int, int, node_t*, job_t*);
+void free_flexsched_problem(flexsched_problem_t);
+
 flexsched_solution_t new_flexsched_solution(flexsched_problem_t);
 void free_flexsched_solution(flexsched_solution_t);
 
