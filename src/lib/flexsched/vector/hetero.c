@@ -165,7 +165,6 @@ vp_solution_t solve_hvp_problem_MCB(vp_problem_t vp_prob, int args[],
 
             // apply bin key inverse to best vector key to get how it permutes
             // the bin key in the first w elements...
-            // FIXME: should this be done to current or absolute bin capacity?
             for (j = 0; j < w; j++) 
                 best_perm[j] = bin_dim_ranks[vector_dims[best_v][j]];
 
@@ -221,6 +220,86 @@ vp_solution_t solve_hvp_problem_MCB(vp_problem_t vp_prob, int args[],
 
     free(v_perm);
     free(best_perm);
+
+    if (!num_unmapped_vectors) vp_soln->success = 1;
+
+    return vp_soln;
+}
+
+// solve vp problem using Permutation Pack or Choose Pack
+vp_solution_t solve_hvp_problem_MinCD(vp_problem_t vp_prob, int args[],
+    qsort_cmp_func *cmp_item_idxs, qsort_cmp_func *cmp_bin_idxs)
+{
+    int i, j;
+    int isCP = args[0];
+
+    int unmapped_vectors[vp_prob->num_items];
+    int num_unmapped_vectors = vp_prob->num_items;
+
+    int b, v, best_v, best_v_idx;
+
+    int bin_idxs[vp_prob->num_bins];
+    int *open_bins = bin_idxs;
+    int num_open_bins = vp_prob->num_bins;
+
+    vp_solution_t vp_soln = new_vp_solution(vp_prob);
+
+    // initialize unmapped vectors and vector dims
+    for (i = 0; i < vp_prob->num_items; i++) unmapped_vectors[i] = i;
+
+    // initialize open bins
+    for (i = 0; i < vp_prob->num_bins; i++) open_bins[i] = i;
+
+    if (cmp_bin_idxs)
+        QSORT_R(open_bins, num_open_bins, sizeof(int), vp_prob->bins, 
+            cmp_bin_idxs);
+
+    while (num_open_bins > 0 && num_unmapped_vectors > 0) {
+
+        b = *open_bins;
+
+        best_v = -1;
+        best_v_idx = -1;
+
+        // Find the first vector that can be put in the bin
+        for (i = 0; i < num_unmapped_vectors; i++) {
+            v = unmapped_vectors[i];
+            if (vp_item_can_fit_in_bin(vp_soln, v, b)) {
+                best_v = v;
+                best_v_idx = i;
+                break;
+            }
+        }
+
+        for (i++; i < num_unmapped_vectors; i++) {
+            v = unmapped_vectors[i];
+            if (!vp_item_can_fit_in_bin(vp_soln, v, b)) continue;
+
+            // FIXME: pick the one that minimizes pairwise distance...
+            if (cmp_val < 0 || (0 == cmp_val && cmp_item_idxs &&
+                QSORT_CMP_CALL(cmp_item_idxs, vp_prob->items, &v, &best_v) < 0))
+            {
+                best_v = v;
+                best_v_idx = i;
+                tmp_perm = best_perm;
+                best_perm = v_perm;
+                v_perm = tmp_perm;
+            }
+        }
+
+        // if we found a vector put it in the bin and delete from the list of
+        // unmapped vectors -- otherwise advance to the next bin
+        if (best_v > -1) {
+            vp_put_item_in_bin(vp_soln, best_v, b);
+            num_unmapped_vectors--;
+            unmapped_vectors[best_v_idx] = 
+                unmapped_vectors[num_unmapped_vectors];
+        } else {
+            open_bins++;
+            num_open_bins--;
+        }
+
+    }
 
     if (!num_unmapped_vectors) vp_soln->success = 1;
 
