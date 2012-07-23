@@ -226,6 +226,23 @@ vp_solution_t solve_hvp_problem_MCB(vp_problem_t vp_prob, int args[],
     return vp_soln;
 }
 
+double pairwise_distance(vp_solution_t vp_soln, int b, int v) {
+    int i, j;
+    double x;
+    double retval = 0;
+    for (i = 0; i < vp_soln->prob->num_dims - 1; i++) {
+        for (j = i+1; j < vp_soln->prob->num_dims; j++) {
+            x = (vp_soln->capacities[b][i] + 
+                    vp_soln->prob->items[v]->totals[i]) - 
+                    (vp_soln->capacities[b][j] + 
+                        vp_soln->prob->items[v]->totals[j]);
+            retval += x*x;
+        }
+    }
+    //printf("%d %d distance: %g\n", i, j, retval);
+    return retval;
+}
+
 // solve vp problem using Permutation Pack or Choose Pack
 vp_solution_t solve_hvp_problem_MinCD(vp_problem_t vp_prob, int args[],
     qsort_cmp_func *cmp_item_idxs, qsort_cmp_func *cmp_bin_idxs)
@@ -237,6 +254,7 @@ vp_solution_t solve_hvp_problem_MinCD(vp_problem_t vp_prob, int args[],
     int num_unmapped_vectors = vp_prob->num_items;
 
     int b, v, best_v, best_v_idx;
+    double best_val, val;
 
     int bin_idxs[vp_prob->num_bins];
     int *open_bins = bin_idxs;
@@ -267,6 +285,7 @@ vp_solution_t solve_hvp_problem_MinCD(vp_problem_t vp_prob, int args[],
             if (vp_item_can_fit_in_bin(vp_soln, v, b)) {
                 best_v = v;
                 best_v_idx = i;
+                best_val = pairwise_distance(vp_soln, b, v);
                 break;
             }
         }
@@ -275,15 +294,15 @@ vp_solution_t solve_hvp_problem_MinCD(vp_problem_t vp_prob, int args[],
             v = unmapped_vectors[i];
             if (!vp_item_can_fit_in_bin(vp_soln, v, b)) continue;
 
+            val = pairwise_distance(vp_soln, b, v);
+
             // FIXME: pick the one that minimizes pairwise distance...
-            if (cmp_val < 0 || (0 == cmp_val && cmp_item_idxs &&
+            if (val < best_val || (val == best_val && cmp_item_idxs &&
                 QSORT_CMP_CALL(cmp_item_idxs, vp_prob->items, &v, &best_v) < 0))
             {
                 best_v = v;
                 best_v_idx = i;
-                tmp_perm = best_perm;
-                best_perm = v_perm;
-                v_perm = tmp_perm;
+                best_val = val;
             }
         }
 
@@ -476,6 +495,10 @@ flexsched_solution_t HVP_scheduler(
             args[0] = BEST_FIT;
         } else if (!strcmp(*opt, "PP")) {
             solve_hvp_problem = solve_hvp_problem_MCB;
+            args[0] = 0;
+            args[1] = 1; // default W
+        } else if (!strcmp(*opt, "MinCD")) {
+            solve_hvp_problem = solve_hvp_problem_MinCD;
             args[0] = 0;
             args[1] = 1; // default W
         } else if (!strcmp(*opt, "CP")) {
