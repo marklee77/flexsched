@@ -29,9 +29,7 @@ vp_solution_t solve_hvp_problem_FITD(vp_problem_t vp_prob, int args[],
 
     // Place vectors into bins
     switch(fit_type) {
-
         case FIRST_FIT:
-
         for (i = 0; i < vp_prob->num_items; i++) {
             v = item_sortmap[i];
             for (j = 0; j < vp_prob->num_bins; j++) {
@@ -41,9 +39,7 @@ vp_solution_t solve_hvp_problem_FITD(vp_problem_t vp_prob, int args[],
             if (j >= vp_prob->num_bins) return vp_soln; 
         }
         break;
-
         case BEST_FIT:
-
         for (i = 0; i < vp_prob->num_items; i++) {
             v = item_sortmap[i];
             for (j = 0; j < vp_prob->num_bins; j++) {
@@ -67,7 +63,6 @@ vp_solution_t solve_hvp_problem_FITD(vp_problem_t vp_prob, int args[],
         fprintf(stderr,"Invalid VP fit type '%d'\n", fit_type);
         exit(1);
     }
-
     vp_soln->success = 1;
     return vp_soln;
 }

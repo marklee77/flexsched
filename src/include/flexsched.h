@@ -55,7 +55,7 @@ typedef struct job_s {
 
 typedef struct flexsched_problem_s {
     int num_resources;
-    int num_nodes; 
+    int num_nodes;
     int num_jobs;
     node_t *nodes;
     job_t *jobs;
