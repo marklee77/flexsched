@@ -1,0 +1,94 @@
+Examining new google cluster data
+
+copied from storage for developers
+
+gsutil cp -r gs://clusterdata-2011-1/machine_events/ .
+
+Some observations:
+
+uniq machines:
+perl -F, -ane 'print "$F[1]\n";' < part-00000-of-00001.csv | sort | uniq | wc -l
+12583
+
+about 10 configuration changes through runtime:
+perl -F, -ane 'chomp; print "$F[-2]\t$F[-1]\t$F[1]\n" if ($F[-2] ne "");' <
+part-00000-of-00001.csv | sort -nk 3 | uniq | wc -l
+12593
+
+not going to show it, but several machines initially show up with no cpu/memory
+info and this is subsequently updated. A few machines have memory added at some
+point.
+
+CPU distribution:
+ perl -F, -ane '$mem = $F[-1]; chomp $mem; print "$F[-2]\t$mem\t$F[1]\n" if
+($F[-2] ne "");' < part-00000-of-00001.csv | sort -nk 3 | uniq -f 2 | perl -ane
+'print "$F[0]\n";' | sort -n | uniq -c
+    126 0.25
+  11659 0.5
+    798 1
+
+Mean CPU 0.5397
+
+Memory distribution:
+ perl -F, -ane '$mem = $F[-1]; chomp $mem; print "$F[-2]\t$mem\t$F[1]\n" if
+($F[-2] ne "");' < part-00000-of-00001.csv | sort -nk 3 | uniq -f 2 | perl -ane
+'print "$F[1]\n";' | sort -n | uniq -c
+      5 0.03085
+      1 0.06158
+     54 0.1241
+   3864 0.2493
+    126 0.2498
+   6729 0.4995
+      3 0.5
+   1002 0.749
+      4 0.9678
+    795 1
+
+Mean Memory: 0.46997
+
+Combined Distribution:
+ perl -F, -ane '$mem = $F[-1]; chomp $mem; print "$F[-2]\t$mem\t$F[1]\n" if
+($F[-2] ne "");' < part-00000-of-00001.csv | sort -nk 3 | uniq -f 2 | perl -ane
+'print "$F[0]\t$F[1]\n";' | sort -n | uniq -c
+    126 0.25    0.2498
+      5 0.5     0.03085
+      1 0.5     0.06158
+     54 0.5     0.1241
+   3864 0.5     0.2493
+   6729 0.5     0.4995
+   1002 0.5     0.749
+      4 0.5     0.9678
+      3 1       0.5
+    795 1       1
+
+Considerably more info for tasks...500 files, 1.6GB compressed...
+
+just get cpu/memory requests for newly submitted jobs...
+for FILE in *.gz; do gunzip -c ${FILE}; done | 
+    perl -F, -ane 'print "$F[9]\t$F[10]\n" if ($F[5] == 0);' | 
+    tee cpumemstats.txt
+
+wc -l cpumemstats.txt
+48375166
+
+sort -n < cpumemstats.txt | uniq -c | tee cpumemagg.tx
+
+wc -l cpumemagg.txt
+15044 classes
+291 tasks in blank class
+8383 tasks in 0 0 class
+loads in the 0 cpu and some mem cohort (opportunistic)
+
+delete all blank/opportunistic tasks
+
+perl -ane 'print "$F[0]\n";' < cpumemagg.txt | perl -e '$x = 0; while(<>) { $x
++= $_; }; print "$x\n";'
+
+48,046,361 tasks left
+
+biggest cpu need 0.5
+biggest mem need 0.9551
+
+want to get an idea of job task heterogeneity, at least at request level...
+
+orthogonal arrays, latin hypercubes, taguchi designs
