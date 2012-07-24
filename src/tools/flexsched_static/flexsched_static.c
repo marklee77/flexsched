@@ -21,8 +21,8 @@ struct implemented_scheduler_s implemented_schedulers[] = {
     {"METAVP",          VP_scheduler,              1},
 */
     {"HVP",             HVP_scheduler,             1},
-/*
     {"METAHVP",         HVP_scheduler,             1},
+/*
     {"METAHVP2",        HVP_scheduler,             1},
     {"METAHVP3",        HVP_scheduler,             1},
     {"METAHVPLIGHT",    HVP_scheduler,             1},

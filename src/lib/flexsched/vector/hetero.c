@@ -397,44 +397,93 @@ flexsched_solution_t HVP_scheduler(
     char **opt;
     int num_algos = 0;
     vp_algo_t *algos;
-    int i;
+    int i, j, k;
     char *s;
 
-    // FIXME: more elegance?
-    for (opt = options; *opt; opt++) num_algos++;
-    algos = (vp_algo_t *)calloc(num_algos, sizeof(vp_algo_t));
+    if (!strcmp(name, "HVP")) {
+        for (opt = options; *opt; opt++) num_algos++;
+        algos = (vp_algo_t *)calloc(num_algos, sizeof(vp_algo_t));
 
-    for (i = 0; i < num_algos; i++) {
-        *opt = options[i];
-        algos[i] = malloc(sizeof(struct vp_algo_s));
-        algos[i]->name = strdup(*opt);
-        s = strtok(*opt, ":");
-        if (!strcmp(s, "FF")) {
-            algos[i]->solver = solve_hvp_problem_FITD;
-            algos[i]->args = calloc(1, sizeof(int));
-            algos[i]->args[0] = FIRST_FIT;
-        } else if (!strcmp(s, "BF")) {
-            algos[i]->solver = solve_hvp_problem_FITD;
-            algos[i]->args = calloc(1, sizeof(int));
-            algos[i]->args[0] = BEST_FIT;
-        } else if (!strcmp(s, "PP")) {
-            algos[i]->solver = solve_hvp_problem_MCB;
-            algos[i]->args = calloc(2, sizeof(int));
-            algos[i]->args[0] = 0;
-            s = strtok(NULL, ":");
-            algos[i]->args[1] = atoi(s+1);
-        } else if (!strcmp(s, "CP")) {
-            algos[i]->solver = solve_hvp_problem_MCB;
-            algos[i]->args = calloc(2, sizeof(int));
-            algos[i]->args[0] = 1;
-            s = strtok(NULL, ":");
-            algos[i]->args[1] = atoi(s+1);
-        } else {
-            fprintf(stderr, "ERROR: unknown vector packing algorithm: %s\n", s);
-            return new_flexsched_solution(flex_prob);
+        for (i = 0; i < num_algos; i++) {
+            *opt = options[i];
+            algos[i] = malloc(sizeof(struct vp_algo_s));
+            algos[i]->name = strdup(*opt);
+            s = strtok(*opt, ":");
+            if (!strcmp(s, "FF")) {
+                algos[i]->solver = solve_hvp_problem_FITD;
+                algos[i]->args = calloc(1, sizeof(int));
+                algos[i]->args[0] = FIRST_FIT;
+            } else if (!strcmp(s, "BF")) {
+                algos[i]->solver = solve_hvp_problem_FITD;
+                algos[i]->args = calloc(1, sizeof(int));
+                algos[i]->args[0] = BEST_FIT;
+            } else if (!strcmp(s, "PP")) {
+                algos[i]->solver = solve_hvp_problem_MCB;
+                algos[i]->args = calloc(2, sizeof(int));
+                algos[i]->args[0] = 0;
+                s = strtok(NULL, ":");
+                algos[i]->args[1] = atoi(s+1);
+            } else if (!strcmp(s, "CP")) {
+                algos[i]->solver = solve_hvp_problem_MCB;
+                algos[i]->args = calloc(2, sizeof(int));
+                algos[i]->args[0] = 1;
+                s = strtok(NULL, ":");
+                algos[i]->args[1] = atoi(s+1);
+            } else {
+                fprintf(stderr, "unknown vector packing algorithm: %s\n", s);
+                return new_flexsched_solution(flex_prob);
+            }
+            algos[i]->cmp_item_idxs = get_vp_cmp_func(strtok(NULL, ":"));
+            algos[i]->cmp_bin_idxs = get_vp_cmp_func(strtok(NULL, ":"));
         }
-        algos[i]->cmp_item_idxs = get_vp_cmp_func(strtok(NULL, ":"));
-        algos[i]->cmp_bin_idxs = get_vp_cmp_func(strtok(NULL, ":"));
+    } else if (!strcmp(name, "METAHVP")) {
+        char *item_sorts[] = { "NONE", "DMAX", "DSUM", "AMAXRATIO", "DMAXRATIO",
+            "AMAXDIFF", "DMAXDIFF" };
+        char *bin_sorts[] = { "NONE", "AMAX", "ASUM", "AMAXRATIO", "DMAXRATIO",
+            "AMAXDIFF", "DMAXDIFF" };
+        num_algos = 7*7+7+7*7;
+        algos = (vp_algo_t *)calloc(num_algos, sizeof(vp_algo_t));
+        k = 0;
+        for (i = 0; i < 7; i++) {
+            for (j = 0; j < 7; j++) {
+                algos[k] = (vp_algo_t)malloc(sizeof(struct vp_algo_s));
+                algos[k]->name = (char *)calloc(23, sizeof(char));
+                sprintf(algos[k]->name, "FF:%s:%s\0", 
+                    item_sorts[i], bin_sorts[j]);
+                algos[k]->solver = solve_hvp_problem_FITD;
+                algos[k]->args = calloc(1, sizeof(int));
+                algos[k]->args[0] = FIRST_FIT;
+                algos[k]->cmp_item_idxs = get_vp_cmp_func(item_sorts[i]);
+                algos[k]->cmp_bin_idxs = get_vp_cmp_func(bin_sorts[j]);
+                k++;
+            }
+        }
+        for (i = 0; i < 7; i++) {
+            algos[k] = (vp_algo_t)malloc(sizeof(struct vp_algo_s));
+            algos[k]->name = (char *)calloc(18, sizeof(char));
+            sprintf(algos[k]->name, "BF:%s:NONE\0", item_sorts[i]);
+            algos[k]->solver = solve_hvp_problem_FITD;
+            algos[k]->args = calloc(1, sizeof(int));
+            algos[k]->args[0] = BEST_FIT;
+            algos[k]->cmp_item_idxs = get_vp_cmp_func(item_sorts[i]);
+            algos[k]->cmp_bin_idxs = NULL;
+            k++;
+        }
+        for (i = 0; i < 7; i++) {
+            for (j = 0; j < 7; j++) {
+                algos[k] = (vp_algo_t)malloc(sizeof(struct vp_algo_s));
+                algos[k]->name = (char *)calloc(26, sizeof(char));
+                sprintf(algos[k]->name, "PP:W1:%s:%s\0", 
+                    item_sorts[i], bin_sorts[j]);
+                algos[k]->solver = solve_hvp_problem_MCB;
+                algos[k]->args = calloc(2, sizeof(int));
+                algos[k]->args[0] = 0;
+                algos[k]->args[1] = 1;
+                algos[k]->cmp_item_idxs = get_vp_cmp_func(item_sorts[i]);
+                algos[k]->cmp_bin_idxs = get_vp_cmp_func(bin_sorts[j]);
+                k++;
+            }
+        }
     }
 
     return HVP_solver(flex_prob, num_algos, algos);
