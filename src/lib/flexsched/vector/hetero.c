@@ -4,7 +4,7 @@
 #define FIRST_FIT 0
 #define BEST_FIT 1
 
-vp_solution_t solve_hvp_problem_FITD(vp_problem_t vp_prob, int args[], 
+vp_solution_t solve_hvp_problem_FITD(vp_problem_t vp_prob, int args[],
     qsort_cmp_func *cmp_item_idxs, qsort_cmp_func *cmp_bin_idxs)
 {
     int fit_type = args[0];
@@ -231,7 +231,6 @@ vp_solution_t solve_hvp_problem_MinCD(vp_problem_t vp_prob, int args[],
     qsort_cmp_func *cmp_item_idxs, qsort_cmp_func *cmp_bin_idxs)
 {
     int i, j;
-    int isCP = args[0];
 
     int unmapped_vectors[vp_prob->num_items];
     int num_unmapped_vectors = vp_prob->num_items;
@@ -306,109 +305,10 @@ vp_solution_t solve_hvp_problem_MinCD(vp_problem_t vp_prob, int args[],
     return vp_soln;
 }
     
-vp_solution_t solve_hvp_problem_META(vp_problem_t vp_prob, int notargs[],
-    qsort_cmp_func cmp_item_idxs, qsort_cmp_func cmp_bin_idxs)
-{
-
-    int args[2] = {0, 0};
-    char *sortnames[] = { "ALEX", "AMAX", "ASUM", "AMAXRATIO", "AMAXDIFF",
-        "DLEX", "DMAX", "DSUM", "DMAXRATIO", "DMAXDIFF", "NONE", NULL };
-    char **item_sort_name, **bin_sort_name;
-    int isCP, w;
-    int i;
-    vp_solution_t vp_soln = NULL;
-
-    for (isCP = 0; isCP <= 1; isCP++) {
-        args[0] = isCP;
-        for (item_sort_name = sortnames; *item_sort_name; item_sort_name++) {
-            for (bin_sort_name = sortnames; *bin_sort_name; bin_sort_name++) {
-                vp_soln = solve_hvp_problem_FITD(vp_prob, args, 
-                    get_vp_cmp_func(*item_sort_name), 
-                    get_vp_cmp_func(*bin_sort_name));
-                if (vp_soln && vp_soln->success) {
-                    sprintf(vp_soln->misc_output, "%s %s %s", 
-                        isCP ? "BF" : "FF", *item_sort_name, *bin_sort_name);
-                    return vp_soln;
-                }
-                free_vp_solution(vp_soln);
-            }
-        }
-    }
-
-    for (isCP = 0; isCP <= 1; isCP++) {
-        args[0] = isCP;
-        for (item_sort_name = sortnames; *item_sort_name; item_sort_name++) {
-            for (bin_sort_name = sortnames; *bin_sort_name; bin_sort_name++) {
-                for (w = 0; w <= vp_prob->num_dims; w++) {
-                    args[1] = w;
-                    vp_soln = solve_hvp_problem_MCB(vp_prob, args, 
-                        get_vp_cmp_func(*item_sort_name), 
-                        get_vp_cmp_func(*bin_sort_name)); 
-                    if (vp_soln && vp_soln->success) {
-                        sprintf(vp_soln->misc_output, 
-                            "%s %s %s W%d", 
-                            isCP ? "CP" : "PP", 
-                            *item_sort_name, *bin_sort_name, w);
-                        return vp_soln;
-                    }
-                    free_vp_solution(vp_soln);
-                }
-            }
-        }
-    }
-
-    return new_vp_solution(vp_prob);
-}
-
-vp_solution_t solve_hvp_problem_METALIGHT(vp_problem_t vp_prob, int notargs[],
-    qsort_cmp_func cmp_item_idxs, qsort_cmp_func cmp_bin_idxs)
-{
-
-    int args[2] = {0, 0};
-    char *itemsorts[] = { "DMAX", "DSUM", NULL };
-    char *binsorts[] = { "AMAX", "ASUM", NULL };
-    char **item_sort_name, **bin_sort_name;
-    int isCP, w;
-    int i;
-    vp_solution_t vp_soln = NULL;
-
-    args[0] = FIRST_FIT;
-    for (item_sort_name = itemsorts; *item_sort_name; item_sort_name++) {
-        vp_soln = solve_hvp_problem_FITD(vp_prob, args, 
-            get_vp_cmp_func(*item_sort_name), NULL);
-        if (vp_soln && vp_soln->success) { 
-            sprintf(vp_soln->misc_output, "FF %s NONE", *item_sort_name);
-            return vp_soln;
-        }
-        free_vp_solution(vp_soln);
-    }
-
-    // don't really know about CP vs PP for only 2 dims...
-    args[0] = 0;
-    for (item_sort_name = itemsorts; *item_sort_name; item_sort_name++) {
-        for (bin_sort_name = binsorts; *bin_sort_name; bin_sort_name++) {
-            for (w = 1; w < vp_prob->num_dims; w++) {
-                args[1] = w;
-                vp_soln = solve_hvp_problem_MCB(vp_prob, args, 
-                    get_vp_cmp_func(*item_sort_name), 
-                    get_vp_cmp_func(*bin_sort_name)); 
-                if (vp_soln && vp_soln->success) {
-                    sprintf(vp_soln->misc_output, "PP %s %s W%d", 
-                        *item_sort_name, *bin_sort_name, w);
-                    return vp_soln;
-                }
-                free_vp_solution(vp_soln);
-            }
-        }
-    }
-
-    return new_vp_solution(vp_prob);
-}
-
-flexsched_solution_t HVP_solver(flexsched_problem_t flex_prob,
-    vp_solution_t (*solve_hvp_problem)(vp_problem_t, int[], qsort_cmp_func, 
-        qsort_cmp_func), int args[], qsort_cmp_func cmp_item_idxs, 
-    qsort_cmp_func cmp_bin_idxs) 
+flexsched_solution_t HVP_solver(flexsched_problem_t flex_prob, int num_funcs,
+    vp_solution_t (*solve_hvp_problem[])(vp_problem_t, int[], qsort_cmp_func, 
+        qsort_cmp_func), int args[][], qsort_cmp_func cmp_item_idxs[], 
+    qsort_cmp_func cmp_bin_idxs[]) 
 {
     flexsched_solution_t flex_soln = new_flexsched_solution(flex_prob);
     double yield, yieldlb, yieldub;
@@ -428,8 +328,13 @@ flexsched_solution_t HVP_solver(flexsched_problem_t flex_prob,
         vp_prob = new_vp_problem(flex_prob, yield);
 
         // Solve the VP instance
-        vp_soln = solve_hvp_problem(vp_prob, args, cmp_item_idxs, cmp_bin_idxs);
-        if (vp_soln->success) {
+        for (i = 0; i < num_funcs; i++) {
+            vp_soln = solve_hvp_problem[i](vp_prob, args[i], 
+                cmp_item_idxs[i], cmp_bin_idxs[i]);
+            if (vp_soln->success) break;
+            free_vp_solution(vp_soln);
+        }
+        if (i < num_funcs) {
             yieldlb = yield;
             // Save the computed mapping
             flex_soln->success = 1;
@@ -438,13 +343,12 @@ flexsched_solution_t HVP_solver(flexsched_problem_t flex_prob,
                 flex_soln->yields[i] = yield;
             }
             strcpy(flex_soln->misc_output, vp_soln->misc_output);
+            free_vp_solution(vp_soln);
         } else {
             yieldub = yield;
         }
 
-        free_vp_solution(vp_soln);
         free_vp_problem(vp_prob);
-
     }
 
     return flex_soln;
@@ -456,15 +360,22 @@ flexsched_solution_t HVP_solver(flexsched_problem_t flex_prob,
 flexsched_solution_t HVP_scheduler(
     flexsched_problem_t flex_prob, char *name, char **options)
 {
-    vp_solution_t (*solve_hvp_problem)(vp_problem_t, int [], 
+    vp_solution_t (**solve_hvp_problem)(vp_problem_t, int [], 
         qsort_cmp_func, qsort_cmp_func)
         = NULL;
-    int args[2] = {0, 0};
+    int **args;
     qsort_cmp_func *cmp_tmp = NULL;
-    qsort_cmp_func *cmp_item_idxs = NULL;
-    qsort_cmp_func *cmp_bin_idxs = NULL;
+    qsort_cmp_func **cmp_item_idxs = NULL;
+    qsort_cmp_func **cmp_bin_idxs = NULL;
     char **opt;
-    int item_sort_specified = 0;
+    int num_funcs = 0;
+
+    for (opt = options; *opt; opt++) num_funcs++;
+    solve_hvp_problem = calloc(num_funcs, sizeof(vp_solution_t *(vp_problem_t,
+                int [], qsort_cmp_func, qsort_cmp_func)));
+    args = calloc(num_funcs, sizeof(int*));
+    cmp_item_idxs = calloc(num_funcs, sizeof(*qsort_comp_func));
+    cmp_bin_idxs = calloc(num_funcs, sizeof(*qsort_comp_func));
 
     // could be a little more rigorous here...
     for (opt = options; *opt; opt++) {
