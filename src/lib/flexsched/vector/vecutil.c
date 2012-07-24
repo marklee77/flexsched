@@ -1,7 +1,7 @@
 #include "flexsched.h"
 #include "vector.h"
 
-vp_problem_t new_vp_problem(flexsched_problem_t flex_prob, double yield) 
+vp_problem_t new_vp_problem(flexsched_problem_t flex_prob, double yield)
 {
     int i, j;
     vp_problem_t vp_prob = (vp_problem_t)malloc(sizeof(struct vp_problem_s));
@@ -70,7 +70,6 @@ vp_solution_t new_vp_solution(vp_problem_t vp_prob)
     int i, j;
     vp_solution_t vp_soln = (vp_solution_t)malloc(sizeof(struct vp_solution_s));
     vp_soln->prob = vp_prob;
-    vp_soln->success = 0;
     vp_soln->misc_output[0] = '\0';
     vp_soln->mapping = (int *)calloc(vp_prob->num_items, sizeof(int));
     for (i = 0; i< vp_prob->num_items; i++) {
@@ -134,12 +133,6 @@ int vp_put_item_in_bin_safe(vp_solution_t vp_soln, int i, int b)
     if (!vp_item_can_fit_in_bin(vp_soln, i, b)) return 1;
     vp_put_item_in_bin(vp_soln, i, b);
     return 0;
-}
-
-// load computed as the sum of all dims of all objects
-double vp_compute_sum_load(vp_solution_t vp_soln, int b)
-{
-  return double_array_sum(vp_soln->loads[b], vp_soln->prob->bins[b]->num_dims);
 }
 
 // NOT sort function

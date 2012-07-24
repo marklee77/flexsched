@@ -36,7 +36,10 @@ vp_solution_t solve_hvp_problem_FITD(vp_problem_t vp_prob, int args[],
                 b = bin_sortmap[j];
                 if (!vp_put_item_in_bin_safe(vp_soln, v, b)) break;
             }
-            if (j >= vp_prob->num_bins) return vp_soln; 
+            if (j >= vp_prob->num_bins) {
+                free_vp_solution(vp_soln);
+                return NULL; 
+            }
         }
         break;
         case BEST_FIT:
@@ -47,8 +50,7 @@ vp_solution_t solve_hvp_problem_FITD(vp_problem_t vp_prob, int args[],
                 if (vp_item_can_fit_in_bin(vp_soln, v, b)) {
                     sumcapacities[b] = 0.0;
                     for (k = 0; k < vp_prob->num_dims; k++) {
-                        sumcapacities[b] += 
-                            vp_prob->bins[b]->totals[k] - vp_soln->loads[b][k];
+                        sumcapacities[b] += vp_soln->capacities[b][k];
                     }
                 } else {
                     sumcapacities[b] = 2.0 * vp_prob->num_dims + 1.0;
@@ -56,14 +58,17 @@ vp_solution_t solve_hvp_problem_FITD(vp_problem_t vp_prob, int args[],
             }
             b = double_array_argmin(sumcapacities, vp_prob->num_bins);
             if (sumcapacities[j] > 2.0 * vp_prob->num_dims || 
-                vp_put_item_in_bin_safe(vp_soln, v, b)) return vp_soln;
+                vp_put_item_in_bin_safe(vp_soln, v, b)) {
+                free_vp_solution(vp_soln);
+                return NULL;
+            }
         }
         break;
         default:
         fprintf(stderr,"Invalid VP fit type '%d'\n", fit_type);
         exit(1);
     }
-    vp_soln->success = 1;
+
     return vp_soln;
 }
 
@@ -221,9 +226,11 @@ vp_solution_t solve_hvp_problem_MCB(vp_problem_t vp_prob, int args[],
     free(v_perm);
     free(best_perm);
 
-    if (!num_unmapped_vectors) vp_soln->success = 1;
+    if (!num_unmapped_vectors) return vp_soln;
 
-    return vp_soln;
+    free_vp_solution(vp_soln);
+
+    return NULL;
 }
 
 double pairwise_distance(vp_solution_t vp_soln, int b, int v) {
@@ -319,15 +326,26 @@ vp_solution_t solve_hvp_problem_MinCD(vp_problem_t vp_prob, int args[],
 
     }
 
-    if (!num_unmapped_vectors) vp_soln->success = 1;
+    if (!num_unmapped_vectors) return vp_soln;
 
+    free_vp_solution(vp_soln);
+
+    return NULL;
+}
+
+vp_solution_t call_vp_algo(vp_algo_t algo, 
+    vp_problem_t vp_prob)
+{
+    vp_solution_t vp_soln = algo->solver(vp_prob, algo->args, 
+        algo->cmp_item_idxs, algo->cmp_bin_idxs);
+
+    if (vp_soln) strcpy(vp_soln->misc_output, algo->name);
+    
     return vp_soln;
 }
     
-flexsched_solution_t HVP_solver(flexsched_problem_t flex_prob, int num_funcs,
-    vp_solution_t (*solve_hvp_problem[])(vp_problem_t, int[], qsort_cmp_func, 
-        qsort_cmp_func), int args[][], qsort_cmp_func cmp_item_idxs[], 
-    qsort_cmp_func cmp_bin_idxs[]) 
+flexsched_solution_t HVP_solver(flexsched_problem_t flex_prob, 
+    int num_algos, vp_algo_t *algos) 
 {
     flexsched_solution_t flex_soln = new_flexsched_solution(flex_prob);
     double yield, yieldlb, yieldub;
@@ -347,13 +365,10 @@ flexsched_solution_t HVP_solver(flexsched_problem_t flex_prob, int num_funcs,
         vp_prob = new_vp_problem(flex_prob, yield);
 
         // Solve the VP instance
-        for (i = 0; i < num_funcs; i++) {
-            vp_soln = solve_hvp_problem[i](vp_prob, args[i], 
-                cmp_item_idxs[i], cmp_bin_idxs[i]);
-            if (vp_soln->success) break;
-            free_vp_solution(vp_soln);
-        }
-        if (i < num_funcs) {
+        for (vp_soln = NULL, i = 0; i < num_algos && !vp_soln; i++)
+            vp_soln = call_vp_algo(algos[i], vp_prob);
+
+        if (vp_soln) {
             yieldlb = yield;
             // Save the computed mapping
             flex_soln->success = 1;
@@ -379,65 +394,48 @@ flexsched_solution_t HVP_solver(flexsched_problem_t flex_prob, int num_funcs,
 flexsched_solution_t HVP_scheduler(
     flexsched_problem_t flex_prob, char *name, char **options)
 {
-    vp_solution_t (**solve_hvp_problem)(vp_problem_t, int [], 
-        qsort_cmp_func, qsort_cmp_func)
-        = NULL;
-    int **args;
-    qsort_cmp_func *cmp_tmp = NULL;
-    qsort_cmp_func **cmp_item_idxs = NULL;
-    qsort_cmp_func **cmp_bin_idxs = NULL;
     char **opt;
-    int num_funcs = 0;
+    int num_algos = 0;
+    vp_algo_t *algos;
+    int i;
+    char *s;
 
-    for (opt = options; *opt; opt++) num_funcs++;
-    solve_hvp_problem = calloc(num_funcs, sizeof(vp_solution_t *(vp_problem_t,
-                int [], qsort_cmp_func, qsort_cmp_func)));
-    args = calloc(num_funcs, sizeof(int*));
-    cmp_item_idxs = calloc(num_funcs, sizeof(*qsort_comp_func));
-    cmp_bin_idxs = calloc(num_funcs, sizeof(*qsort_comp_func));
+    // FIXME: more elegance?
+    for (opt = options; *opt; opt++) num_algos++;
+    algos = (vp_algo_t *)calloc(num_algos, sizeof(vp_algo_t));
 
-    // could be a little more rigorous here...
-    for (opt = options; *opt; opt++) {
-        if (!strcmp(*opt, "FF")) {
-            solve_hvp_problem = solve_hvp_problem_FITD;
-            args[0] = FIRST_FIT;
-        } else if (!strcmp(*opt, "BF")) {
-            solve_hvp_problem = solve_hvp_problem_FITD;
-            args[0] = BEST_FIT;
-        } else if (!strcmp(*opt, "PP")) {
-            solve_hvp_problem = solve_hvp_problem_MCB;
-            args[0] = 0;
-            args[1] = 1; // default W
-        } else if (!strcmp(*opt, "MinCD")) {
-            solve_hvp_problem = solve_hvp_problem_MinCD;
-            args[0] = 0;
-            args[1] = 1; // default W
-        } else if (!strcmp(*opt, "CP")) {
-            solve_hvp_problem = solve_hvp_problem_MCB;
-            args[0] = 1;
-            args[1] = 1;
-        } else if ('W' == **opt) {
-            args[1] = atoi(*opt + 1);
+    for (i = 0; i < num_algos; i++) {
+        *opt = options[i];
+        algos[i] = malloc(sizeof(struct vp_algo_s));
+        algos[i]->name = strdup(*opt);
+        s = strtok(*opt, ":");
+        if (!strcmp(s, "FF")) {
+            algos[i]->solver = solve_hvp_problem_FITD;
+            algos[i]->args = calloc(1, sizeof(int));
+            algos[i]->args[0] = FIRST_FIT;
+        } else if (!strcmp(s, "BF")) {
+            algos[i]->solver = solve_hvp_problem_FITD;
+            algos[i]->args = calloc(1, sizeof(int));
+            algos[i]->args[0] = BEST_FIT;
+        } else if (!strcmp(s, "PP")) {
+            algos[i]->solver = solve_hvp_problem_MCB;
+            algos[i]->args = calloc(2, sizeof(int));
+            algos[i]->args[0] = 0;
+            s = strtok(NULL, ":");
+            algos[i]->args[1] = atoi(s+1);
+        } else if (!strcmp(s, "CP")) {
+            algos[i]->solver = solve_hvp_problem_MCB;
+            algos[i]->args = calloc(2, sizeof(int));
+            algos[i]->args[0] = 1;
+            s = strtok(NULL, ":");
+            algos[i]->args[1] = atoi(s+1);
         } else {
-            cmp_tmp = get_vp_cmp_func(*opt);
-            if (!item_sort_specified) {
-                cmp_item_idxs = cmp_tmp;
-                item_sort_specified = 1;
-            } else {
-                cmp_bin_idxs = cmp_tmp;
-            }
+            fprintf(stderr, "ERROR: unknown vector packing algorithm: %s\n", s);
+            return new_flexsched_solution(flex_prob);
         }
+        algos[i]->cmp_item_idxs = get_vp_cmp_func(strtok(NULL, ":"));
+        algos[i]->cmp_bin_idxs = get_vp_cmp_func(strtok(NULL, ":"));
     }
 
-    if (!strcmp(name, "METAHVP")) {
-        solve_hvp_problem = solve_hvp_problem_META;
-    }
-
-    if (!strcmp(name, "METAHVPLIGHT")) {
-        solve_hvp_problem = solve_hvp_problem_METALIGHT;
-    }
-
-    return HVP_solver(flex_prob, solve_hvp_problem, args, cmp_item_idxs, 
-        cmp_bin_idxs);
-
+    return HVP_solver(flex_prob, num_algos, algos);
 }

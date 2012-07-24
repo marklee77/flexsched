@@ -16,13 +16,25 @@ typedef struct vp_problem_s {
 } *vp_problem_t; 
 
 typedef struct vp_solution_s {
-    int success;
     vp_problem_t prob;
     int *mapping;
-    double **loads; // useful scratch variable
+    double **loads;      // useful scratch variable
     double **capacities; // useful scratch variable
     char misc_output[100];
 } *vp_solution_t;
+
+typedef vp_solution_t(vp_solver_func)(vp_problem_t, int [],
+    qsort_cmp_func, qsort_cmp_func);
+
+typedef struct vp_algo_s {
+    char *name;
+    vp_solver_func *solver;
+    int *args;
+    qsort_cmp_func *cmp_item_idxs;
+    qsort_cmp_func *cmp_bin_idxs;
+} *vp_algo_t;
+
+vp_solution_t call_vp_algos(int, vp_algo_t, vp_problem_t);
 
 // function prototypes
 vp_problem_t new_vp_problem(flexsched_problem_t, double);
