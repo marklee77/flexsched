@@ -18,7 +18,6 @@ typedef struct vp_problem_s {
 typedef struct vp_solution_s {
     vp_problem_t prob;
     int *mapping;
-    double **loads;      // useful scratch variable
     double **capacities; // useful scratch variable
     char misc_output[100];
 } *vp_solution_t;
@@ -45,7 +44,6 @@ void free_vp_solution(vp_solution_t);
 int vp_item_can_fit_in_bin(vp_solution_t, int, int);
 void vp_put_item_in_bin(vp_solution_t, int, int);
 int vp_put_item_in_bin_safe(vp_solution_t, int, int);
-double vp_compute_sum_load(vp_solution_t, int);
 
 int cmp_int_arrays_lex(int, int [], int []);
 

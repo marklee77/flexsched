@@ -75,16 +75,12 @@ vp_solution_t new_vp_solution(vp_problem_t vp_prob)
     for (i = 0; i< vp_prob->num_items; i++) {
         vp_soln->mapping[i] = -1;
     }
-    vp_soln->loads = (double **)calloc(vp_prob->num_bins, sizeof(double *));
     vp_soln->capacities = 
         (double **)calloc(vp_prob->num_bins, sizeof(double *));
     for (i = 0; i < vp_prob->num_bins; i++) {
-        vp_soln->loads[i] = (double *)calloc(vp_prob->bins[i]->num_dims, 
-            sizeof(double));
         vp_soln->capacities[i] = (double *)calloc(vp_prob->bins[i]->num_dims, 
             sizeof(double));
         for (j = 0; j < vp_prob->bins[i]->num_dims; j++) {
-            vp_soln->loads[i][j] = 0.0;
             vp_soln->capacities[i][j] = vp_prob->bins[i]->totals[j];
         }
     }
@@ -96,10 +92,8 @@ void free_vp_solution(vp_solution_t vp_soln)
 {
     int i;
     for (i = 0; i < vp_soln->prob->num_bins; i++) {
-        free(vp_soln->loads[i]);
         free(vp_soln->capacities[i]);
     }
-    free(vp_soln->loads);
     free(vp_soln->capacities);
     free(vp_soln->mapping);
     free(vp_soln);
@@ -123,7 +117,6 @@ void vp_put_item_in_bin(vp_solution_t vp_soln, int i, int b)
     int j;
     vp_soln->mapping[i] = b;
     for (j = 0; j < vp_soln->prob->bins[b]->num_dims; j++) {
-        vp_soln->loads[b][j] += vp_soln->prob->items[i]->totals[j];
         vp_soln->capacities[b][j] -= vp_soln->prob->items[i]->totals[j];
     }
 }
