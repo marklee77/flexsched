@@ -37,6 +37,7 @@ for i in range(num_services):
 
 probf.close()
 
+print "resource totals:", resource_totals
 print "requirement totals:", requirement_totals
 print "need totals:", need_totals
 
@@ -51,8 +52,11 @@ for j in range(num_resources):
         requirement_factors.append(0.0)
 
     if (need_totals[j] > 0.0):
-        need_factors.append(loads[j] * resource_totals[j] /
-            need_totals[j])
+        # FIXME: my brain is being a little melty right now
+        if (requirement_totals[j] > 0.0):
+            need_factors.append(loads[j] * slacks[j] * resource_totals[j] / need_totals[j])
+        else:
+            need_factors.append(loads[j] * resource_totals[j] / need_totals[j])
     else:
         need_factors.append(0.0)
 
