@@ -437,112 +437,47 @@ flexsched_solution_t HVP_scheduler(
             algos[i]->cmp_bin_idxs = get_vp_cmp_func(strtok(NULL, ":"));
         }
     } else if (!strcmp(name, "METAHVP")) {
-        char *item_sorts[] = { "NONE", "DMAX", "DSUM", "AMAXRATIO", "DMAXRATIO",
-            "AMAXDIFF", "DMAXDIFF" };
-        char *bin_sorts[] = { "NONE", "AMAX", "ASUM", "AMAXRATIO", "DMAXRATIO",
-            "AMAXDIFF", "DMAXDIFF" };
-        num_algos = 7*7+7+7*7;
+        char *sorts[] = { "NONE", "DMAX", "DSUM", "DMAXRATIO", "DMAXDIFF", 
+                                  "AMAX", "ASUM", "AMAXRATIO", "AMAXDIFF" };
+        num_algos = 9*9+9+9*9;
         algos = (vp_algo_t *)calloc(num_algos, sizeof(vp_algo_t));
         k = 0;
-        for (i = 0; i < 7; i++) {
-            for (j = 0; j < 7; j++) {
+        for (i = 0; i < 9; i++) {
+            for (j = 0; j < 9; j++) {
                 algos[k] = (vp_algo_t)malloc(sizeof(struct vp_algo_s));
                 algos[k]->name = (char *)calloc(23, sizeof(char));
-                sprintf(algos[k]->name, "FF:%s:%s\0", 
-                    item_sorts[i], bin_sorts[j]);
+                sprintf(algos[k]->name, "FF:%s:%s\0", sorts[i], sorts[j]);
                 algos[k]->solver = solve_hvp_problem_FITD;
                 algos[k]->args = calloc(1, sizeof(int));
                 algos[k]->args[0] = FIRST_FIT;
-                algos[k]->cmp_item_idxs = get_vp_cmp_func(item_sorts[i]);
-                algos[k]->cmp_bin_idxs = get_vp_cmp_func(bin_sorts[j]);
+                algos[k]->cmp_item_idxs = get_vp_cmp_func(sorts[i]);
+                algos[k]->cmp_bin_idxs = get_vp_cmp_func(sorts[j]);
                 k++;
             }
         }
-        for (i = 0; i < 7; i++) {
+        for (i = 0; i < 9; i++) {
             algos[k] = (vp_algo_t)malloc(sizeof(struct vp_algo_s));
             algos[k]->name = (char *)calloc(18, sizeof(char));
-            sprintf(algos[k]->name, "BF:%s:NONE\0", item_sorts[i]);
+            sprintf(algos[k]->name, "BF:%s:NONE\0", sorts[i]);
             algos[k]->solver = solve_hvp_problem_FITD;
             algos[k]->args = calloc(1, sizeof(int));
             algos[k]->args[0] = BEST_FIT;
-            algos[k]->cmp_item_idxs = get_vp_cmp_func(item_sorts[i]);
+            algos[k]->cmp_item_idxs = get_vp_cmp_func(sorts[i]);
             algos[k]->cmp_bin_idxs = NULL;
             k++;
         }
-        for (i = 0; i < 7; i++) {
-            for (j = 0; j < 7; j++) {
+        for (i = 0; i < 9; i++) {
+            for (j = 0; j < 9; j++) {
                 algos[k] = (vp_algo_t)malloc(sizeof(struct vp_algo_s));
                 algos[k]->name = (char *)calloc(26, sizeof(char));
                 sprintf(algos[k]->name, "PP:W1:%s:%s\0", 
-                    item_sorts[i], bin_sorts[j]);
+                    sorts[i], sorts[j]);
                 algos[k]->solver = solve_hvp_problem_MCB;
                 algos[k]->args = calloc(2, sizeof(int));
                 algos[k]->args[0] = 0;
                 algos[k]->args[1] = 1;
-                algos[k]->cmp_item_idxs = get_vp_cmp_func(item_sorts[i]);
-                algos[k]->cmp_bin_idxs = get_vp_cmp_func(bin_sorts[j]);
-                k++;
-            }
-        }
-    } else if (!strcmp(name, "METAHVP-FF")) {
-        char *item_sorts[] = { "NONE", "DMAX", "DSUM", "AMAXRATIO", "DMAXRATIO",
-            "AMAXDIFF", "DMAXDIFF" };
-        char *bin_sorts[] = { "NONE", "AMAX", "ASUM", "AMAXRATIO", "DMAXRATIO",
-            "AMAXDIFF", "DMAXDIFF" };
-        num_algos = 7*7;
-        algos = (vp_algo_t *)calloc(num_algos, sizeof(vp_algo_t));
-        k = 0;
-        for (i = 0; i < 7; i++) {
-            for (j = 0; j < 7; j++) {
-                algos[k] = (vp_algo_t)malloc(sizeof(struct vp_algo_s));
-                algos[k]->name = (char *)calloc(23, sizeof(char));
-                sprintf(algos[k]->name, "FF:%s:%s\0", 
-                    item_sorts[i], bin_sorts[j]);
-                algos[k]->solver = solve_hvp_problem_FITD;
-                algos[k]->args = calloc(1, sizeof(int));
-                algos[k]->args[0] = FIRST_FIT;
-                algos[k]->cmp_item_idxs = get_vp_cmp_func(item_sorts[i]);
-                algos[k]->cmp_bin_idxs = get_vp_cmp_func(bin_sorts[j]);
-                k++;
-            }
-        }
-    } else if (!strcmp(name, "METAHVP-BF")) {
-        char *item_sorts[] = { "NONE", "DMAX", "DSUM", "AMAXRATIO", "DMAXRATIO",
-            "AMAXDIFF", "DMAXDIFF" };
-        num_algos = 7;
-        algos = (vp_algo_t *)calloc(num_algos, sizeof(vp_algo_t));
-        k = 0;
-        for (i = 0; i < 7; i++) {
-            algos[k] = (vp_algo_t)malloc(sizeof(struct vp_algo_s));
-            algos[k]->name = (char *)calloc(18, sizeof(char));
-            sprintf(algos[k]->name, "BF:%s:NONE\0", item_sorts[i]);
-            algos[k]->solver = solve_hvp_problem_FITD;
-            algos[k]->args = calloc(1, sizeof(int));
-            algos[k]->args[0] = BEST_FIT;
-            algos[k]->cmp_item_idxs = get_vp_cmp_func(item_sorts[i]);
-            algos[k]->cmp_bin_idxs = NULL;
-            k++;
-        }
-    } else if (!strcmp(name, "METAHVP-PP")) {
-        char *item_sorts[] = { "NONE", "DMAX", "DSUM", "AMAXRATIO", "DMAXRATIO",
-            "AMAXDIFF", "DMAXDIFF" };
-        char *bin_sorts[] = { "NONE", "AMAX", "ASUM", "AMAXRATIO", "DMAXRATIO",
-            "AMAXDIFF", "DMAXDIFF" };
-        num_algos = 7*7;
-        algos = (vp_algo_t *)calloc(num_algos, sizeof(vp_algo_t));
-        k = 0;
-        for (i = 0; i < 7; i++) {
-            for (j = 0; j < 7; j++) {
-                algos[k] = (vp_algo_t)malloc(sizeof(struct vp_algo_s));
-                algos[k]->name = (char *)calloc(26, sizeof(char));
-                sprintf(algos[k]->name, "PP:W1:%s:%s\0", 
-                    item_sorts[i], bin_sorts[j]);
-                algos[k]->solver = solve_hvp_problem_MCB;
-                algos[k]->args = calloc(2, sizeof(int));
-                algos[k]->args[0] = 0;
-                algos[k]->args[1] = 1;
-                algos[k]->cmp_item_idxs = get_vp_cmp_func(item_sorts[i]);
-                algos[k]->cmp_bin_idxs = get_vp_cmp_func(bin_sorts[j]);
+                algos[k]->cmp_item_idxs = get_vp_cmp_func(sorts[i]);
+                algos[k]->cmp_bin_idxs = get_vp_cmp_func(sorts[j]);
                 k++;
             }
         }
