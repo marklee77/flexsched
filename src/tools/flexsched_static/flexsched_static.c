@@ -463,7 +463,7 @@ int main(int argc, char *argv[])
     call_scheduler_t *schedulers, *sched;
 
     int i, j;
-    struct timeval time1, time2;
+    struct timespec time1, time2;
     flexsched_problem_t flex_prob = NULL;
     flexsched_solution_t flex_soln = NULL;
     double elapsed_seconds;
@@ -528,13 +528,13 @@ int main(int argc, char *argv[])
         if (!(*sched)->active) continue;
 
         // if we did find it, then run it
-        gettimeofday(&time1, NULL);
+        clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &time1);
 
         // Call the scheduler
         flex_soln = 
             (*sched)->func(flex_prob, (*sched)->name, (*sched)->options);
 
-        gettimeofday(&time2, NULL);
+        clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &time2);
 
         if (flex_soln->success) {
 
@@ -608,7 +608,7 @@ int main(int argc, char *argv[])
 
         // Compute elapsed time
         elapsed_seconds  = (double)(time2.tv_sec - time1.tv_sec);
-        elapsed_seconds += (double)(time2.tv_usec - time1.tv_usec) / 1000000.0;
+        elapsed_seconds += (double)(time2.tv_nsec - time1.tv_nsec) / 1e9;
   
         // Print output
         fprintf(output, "%s|", (*sched)->string);

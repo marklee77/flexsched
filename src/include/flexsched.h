@@ -1,7 +1,8 @@
 #ifndef FLEXSCHED_H
 #define FLEXSCHED_H
 
-#include <sys/time.h>
+//#include <sys/time.h>
+#include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
