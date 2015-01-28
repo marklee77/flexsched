@@ -7,7 +7,9 @@ RUN apt-get update && \
         build-essential \
         curl \
         cmake \
-        git && \
+        git \
+        libglpk-dev \
+        pkg-config && \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
 COPY . /scratch/flexsched
